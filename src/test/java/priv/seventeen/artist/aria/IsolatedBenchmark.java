@@ -51,7 +51,8 @@ public class IsolatedBenchmark {
     };
 
     private static String fmt(long ns) {
-        if (ns < 1_000_000) return String.format("%.2f ms", ns / 1_000_000.0);
+        if (ns < 10_000) return String.format("%.0f ns", (double) ns);
+        if (ns < 1_000_000) return String.format("%.2f us", ns / 1_000.0);
         return String.format("%.1f ms", ns / 1_000_000.0);
     }
 
