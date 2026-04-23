@@ -231,11 +231,6 @@ public class JITCompiler {
         cw.visitField(ACC_PUBLIC | ACC_STATIC, "SUB_PROGRAMS", "[" + IRPROGRAM_DESC, null, null).visitEnd();
 
         if (fastDoubleRecursion) {
-            if (argCount == 1) {
-                cw.visitField(ACC_PRIVATE | ACC_STATIC, "MEMO", "[D", null, null).visitEnd();
-                cw.visitField(ACC_PRIVATE | ACC_STATIC, "MEMO_SET", "[Z", null, null).visitEnd();
-            }
-
             // 生成 callFast(double, double, ...) → double
             String fastDesc = buildFastDescriptor(argCount);
             MethodVisitor fmv = cw.visitMethod(ACC_PRIVATE | ACC_STATIC, "callFast", fastDesc, null, null);
@@ -365,14 +360,6 @@ public class JITCompiler {
         clazz.getField("CONSTANTS").set(null, constants);
         clazz.getField("KEYS").set(null, keys);
         clazz.getField("SUB_PROGRAMS").set(null, subPrograms);
-        if (argCount == 1 && fastDoubleRecursion) {
-            java.lang.reflect.Field memoField = clazz.getDeclaredField("MEMO");
-            java.lang.reflect.Field memoSetField = clazz.getDeclaredField("MEMO_SET");
-            memoField.setAccessible(true);
-            memoSetField.setAccessible(true);
-            memoField.set(null, new double[1024]);
-            memoSetField.set(null, new boolean[1024]);
-        }
         // 标记纯数值 JIT 路径不依赖 Context — NEW_FUNCTION 包装可省一层 lambda + InvocationData
         if (fastDoubleRecursion || fastDoubleVars || fastLongVars) {
             program.setJitContextFree(true);
@@ -623,39 +610,9 @@ public class JITCompiler {
             }
         }
 
-        boolean useMemo = (argCount == 1);
-        int idxLocal = -1;
-        int resultLocal = -1;
-        if (useMemo) {
-            idxLocal = nextLocal;
-            nextLocal += 1;
-            resultLocal = nextLocal;
-        }
-
         // 标签
         Label[] labels = new Label[code.length + 1];
         for (int i = 0; i <= code.length; i++) labels[i] = new Label();
-
-        if (useMemo) {
-            Label skipMemoRead = new Label();
-            mv.visitVarInsn(DLOAD, 0);
-            mv.visitInsn(D2I);
-            mv.visitVarInsn(ISTORE, idxLocal);
-            mv.visitVarInsn(ILOAD, idxLocal);
-            mv.visitJumpInsn(IFLT, skipMemoRead);
-            mv.visitVarInsn(ILOAD, idxLocal);
-            mv.visitIntInsn(SIPUSH, 1024);
-            mv.visitJumpInsn(IF_ICMPGE, skipMemoRead);
-            mv.visitFieldInsn(GETSTATIC, className, "MEMO_SET", "[Z");
-            mv.visitVarInsn(ILOAD, idxLocal);
-            mv.visitInsn(BALOAD);
-            mv.visitJumpInsn(IFEQ, skipMemoRead);
-            mv.visitFieldInsn(GETSTATIC, className, "MEMO", "[D");
-            mv.visitVarInsn(ILOAD, idxLocal);
-            mv.visitInsn(DALOAD);
-            mv.visitInsn(DRETURN);
-            mv.visitLabel(skipMemoRead);
-        }
 
         for (int i = 0; i < regCount; i++) {
             if (usedRegs[i] && fastRegToLocal[i] >= 0) {
@@ -766,9 +723,6 @@ public class JITCompiler {
                     } else {
                         mv.visitInsn(DCONST_0);
                     }
-                    if (useMemo) {
-                        emitMemoStore(mv, className, idxLocal, resultLocal);
-                    }
                     mv.visitInsn(DRETURN);
                 }
 
@@ -827,34 +781,7 @@ public class JITCompiler {
 
         mv.visitLabel(labels[code.length]);
         mv.visitInsn(DCONST_0);
-        if (useMemo) {
-            emitMemoStore(mv, className, idxLocal, resultLocal);
-        }
         mv.visitInsn(DRETURN);
-    }
-
-    private void emitMemoStore(MethodVisitor mv, String className, int idxLocal, int resultLocal) {
-        mv.visitVarInsn(DSTORE, resultLocal);
-        // bounds check
-        Label skipMemoWrite = new Label();
-        mv.visitVarInsn(ILOAD, idxLocal);
-        mv.visitJumpInsn(IFLT, skipMemoWrite);
-        mv.visitVarInsn(ILOAD, idxLocal);
-        mv.visitIntInsn(SIPUSH, 1024);
-        mv.visitJumpInsn(IF_ICMPGE, skipMemoWrite);
-        // MEMO[idx] = result
-        mv.visitFieldInsn(GETSTATIC, className, "MEMO", "[D");
-        mv.visitVarInsn(ILOAD, idxLocal);
-        mv.visitVarInsn(DLOAD, resultLocal);
-        mv.visitInsn(DASTORE);
-        // MEMO_SET[idx] = true
-        mv.visitFieldInsn(GETSTATIC, className, "MEMO_SET", "[Z");
-        mv.visitVarInsn(ILOAD, idxLocal);
-        mv.visitInsn(ICONST_1);
-        mv.visitInsn(BASTORE);
-        mv.visitLabel(skipMemoWrite);
-        // 恢复结果到栈顶
-        mv.visitVarInsn(DLOAD, resultLocal);
     }
 
 
