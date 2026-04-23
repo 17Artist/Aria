@@ -18,6 +18,8 @@ package priv.seventeen.artist.aria.object;
 
 import priv.seventeen.artist.aria.annotation.AriaAnnotation;
 import priv.seventeen.artist.aria.compiler.ir.IRProgram;
+import priv.seventeen.artist.aria.value.IValue;
+import priv.seventeen.artist.aria.value.NoneValue;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -41,6 +43,15 @@ public class ClassDefinition implements IAriaObject {
     // 构造器
     private IRProgram constructorProgram;  // nullable
 
+    // 静态字段：name → mutable
+    private final Map<String, Boolean> staticFieldMeta = new LinkedHashMap<>();
+    // 静态字段值：name → IValue
+    private final Map<String, IValue<?>> staticFields = new LinkedHashMap<>();
+    // 静态方法：name → IRProgram
+    private final Map<String, IRProgram> staticMethods = new LinkedHashMap<>();
+    // 静态字段初始化子程序（self = ObjectValue<ClassDefinition>，运行一次）
+    private IRProgram staticInitProgram;
+
     private List<AriaAnnotation> classAnnotations = Collections.emptyList();
     private final Map<String, List<AriaAnnotation>> methodAnnotations = new LinkedHashMap<>();
     private final Map<String, List<AriaAnnotation>> fieldAnnotations = new LinkedHashMap<>();
@@ -54,6 +65,49 @@ public class ClassDefinition implements IAriaObject {
     public void setFieldInitProgram(IRProgram program) { this.fieldInitProgram = program; }
     public void addMethod(String name, IRProgram body) { methods.put(name, body); }
     public void setConstructorProgram(IRProgram program) { this.constructorProgram = program; }
+
+    public void addStaticField(String name, boolean mutable) {
+        staticFieldMeta.put(name, mutable);
+        staticFields.put(name, NoneValue.NONE);
+    }
+    public void addStaticMethod(String name, IRProgram body) { staticMethods.put(name, body); }
+    public void setStaticInitProgram(IRProgram program) { this.staticInitProgram = program; }
+    public IRProgram getStaticInitProgram() { return staticInitProgram; }
+    public Map<String, Boolean> getStaticFieldMeta() { return staticFieldMeta; }
+    public Map<String, IValue<?>> getStaticFieldsRaw() { return staticFields; }
+    public Map<String, IRProgram> getStaticMethods() { return staticMethods; }
+
+    /** 沿父类链查找静态字段是否存在（包括 mutable 信息）。 */
+    public boolean hasStaticField(String name) {
+        if (staticFieldMeta.containsKey(name)) return true;
+        return parent != null && parent.hasStaticField(name);
+    }
+
+    public IValue<?> getStaticField(String name) {
+        if (staticFieldMeta.containsKey(name)) {
+            IValue<?> v = staticFields.get(name);
+            return v != null ? v : NoneValue.NONE;
+        }
+        if (parent != null) return parent.getStaticField(name);
+        return NoneValue.NONE;
+    }
+
+    /** 写入静态字段；若本类未定义则向父类查找。返回 true 表示成功写入。 */
+    public boolean setStaticField(String name, IValue<?> value) {
+        if (staticFieldMeta.containsKey(name)) {
+            staticFields.put(name, value);
+            return true;
+        }
+        if (parent != null) return parent.setStaticField(name, value);
+        return false;
+    }
+
+    public IRProgram findStaticMethod(String methodName) {
+        IRProgram m = staticMethods.get(methodName);
+        if (m != null) return m;
+        if (parent != null) return parent.findStaticMethod(methodName);
+        return null;
+    }
 
     public void setClassAnnotations(List<AriaAnnotation> annotations) { this.classAnnotations = annotations; }
     public void setMethodAnnotations(String methodName, List<AriaAnnotation> annotations) {

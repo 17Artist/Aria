@@ -846,7 +846,7 @@ public class JavaScriptParser {
                 ASTNode lambda = new LambdaExpr(loc(memberToken), body);
                 // 编码为 __get_propName / __set_propName 方法
                 String methodName = "__" + memberName + "_" + propName;
-                methods.add(new ClassDeclStmt.ClassMethodDecl(methodName, lambda, memberAnnotations));
+                methods.add(new ClassDeclStmt.ClassMethodDecl(methodName, lambda, memberAnnotations, isStatic));
             } else if (check(TokenType.LPAREN)) {
                 // 方法或构造函数
                 List<ParamInfo> params = parseParamListWithDefaults();
@@ -857,18 +857,18 @@ public class JavaScriptParser {
                 if ("constructor".equals(memberName)) {
                     constructor = lambda;
                 } else {
-                    methods.add(new ClassDeclStmt.ClassMethodDecl(memberName, lambda, memberAnnotations));
+                    methods.add(new ClassDeclStmt.ClassMethodDecl(memberName, lambda, memberAnnotations, isStatic));
                 }
             } else if (check(TokenType.ASSIGN)) {
                 // 字段: name = value
                 advance();
                 skipNewlines();
                 ASTNode defaultValue = parseAssignExpr();
-                fields.add(new ClassDeclStmt.ClassFieldDecl(memberName, true, defaultValue, memberAnnotations));
+                fields.add(new ClassDeclStmt.ClassFieldDecl(memberName, true, defaultValue, memberAnnotations, isStatic));
                 consumeStmtEnd();
             } else {
                 // 字段无默认值
-                fields.add(new ClassDeclStmt.ClassFieldDecl(memberName, true, null, memberAnnotations));
+                fields.add(new ClassDeclStmt.ClassFieldDecl(memberName, true, null, memberAnnotations, isStatic));
                 consumeStmtEnd();
             }
             skipNewlines();

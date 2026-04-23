@@ -1114,18 +1114,20 @@ public class Compiler {
     private void compileClassDecl(ClassDeclStmt stmt) {
         int classReg = nextRegister();
 
-        // 编译字段初始化子程序：对每个有默认值的字段，直接内联编译默认值表达式
+        // 编译字段初始化子程序：对每个有默认值的实例字段，直接内联编译默认值表达式
         Compiler fieldInitCompiler = new Compiler();
         // 手动构建字段初始化程序：LOAD_SELF → 对每个字段 SET_PROP self.field = defaultValue → RETURN
         // 使用一个子编译器来编译整个字段初始化体
         List<ASTNode> fieldInitStmts = new ArrayList<>();
+        List<ASTNode> staticInitStmts = new ArrayList<>();
         for (ClassDeclStmt.ClassFieldDecl field : stmt.getFields()) {
             if (field.defaultValue() != null) {
                 // 构造 self.fieldName = defaultValue 的赋值表达式
                 IdentifierExpr selfExpr = new IdentifierExpr(stmt.getLocation(), "self");
                 DotExpr target = new DotExpr(stmt.getLocation(), selfExpr, field.name());
                 AssignmentExpr assign = new AssignmentExpr(stmt.getLocation(), target, AssignmentExpr.AssignOp.ASSIGN, field.defaultValue());
-                fieldInitStmts.add(new ExpressionStmt(stmt.getLocation(), assign));
+                ExpressionStmt es = new ExpressionStmt(stmt.getLocation(), assign);
+                if (field.isStatic()) staticInitStmts.add(es); else fieldInitStmts.add(es);
             }
         }
         IRProgram fieldInitProg;
@@ -1141,9 +1143,24 @@ public class Compiler {
             subPrograms.add(fieldInitProg);
         }
 
-        // 编译方法为子程序
+        // 静态字段初始化子程序：self = ObjectValue<ClassDefinition>，SET_PROP 写入静态字段
+        IRProgram staticInitProg = null;
+        if (!staticInitStmts.isEmpty()) {
+            Compiler staticInitCompiler = new Compiler();
+            BlockStmt staticInitBlock = new BlockStmt(stmt.getLocation(), staticInitStmts);
+            staticInitProg = staticInitCompiler.compile(stmt.getName() + ".<static-init>", staticInitBlock);
+        }
+        int staticInitSubIdx = -1;
+        if (staticInitProg != null) {
+            staticInitSubIdx = subPrograms.size();
+            subPrograms.add(staticInitProg);
+        }
+
+        // 编译方法为子程序（实例 + 静态）
         List<String> methodNames = new ArrayList<>();
         List<Integer> methodSubIndices = new ArrayList<>();
+        List<String> staticMethodNames = new ArrayList<>();
+        List<Integer> staticMethodSubIndices = new ArrayList<>();
         for (ClassDeclStmt.ClassMethodDecl method : stmt.getMethods()) {
             Compiler methodCompiler = new Compiler();
             // method.body() 是 LambdaExpr，需要提取其内部 body
@@ -1154,8 +1171,13 @@ public class Compiler {
             IRProgram methodProg = methodCompiler.compile(stmt.getName() + "." + method.name(), methodBody);
             int subIdx = subPrograms.size();
             subPrograms.add(methodProg);
-            methodNames.add(method.name());
-            methodSubIndices.add(subIdx);
+            if (method.isStatic()) {
+                staticMethodNames.add(method.name());
+                staticMethodSubIndices.add(subIdx);
+            } else {
+                methodNames.add(method.name());
+                methodSubIndices.add(subIdx);
+            }
         }
 
         // 编译构造函数为子程序
@@ -1172,11 +1194,13 @@ public class Compiler {
             subPrograms.add(ctorProg);
         }
 
-        // 收集字段元数据（名称+是否可变）
+        // 收集字段元数据（名称+是否可变），区分实例与静态
         StringBuilder fieldMeta = new StringBuilder();
+        StringBuilder staticFieldMeta = new StringBuilder();
         for (ClassDeclStmt.ClassFieldDecl field : stmt.getFields()) {
-            if (fieldMeta.length() > 0) fieldMeta.append(",");
-            fieldMeta.append(field.mutable() ? "var." : "val.").append(field.name());
+            StringBuilder target = field.isStatic() ? staticFieldMeta : fieldMeta;
+            if (target.length() > 0) target.append(",");
+            target.append(field.mutable() ? "var." : "val.").append(field.name());
         }
 
         // 收集方法元数据
@@ -1185,12 +1209,19 @@ public class Compiler {
             if (methodMeta.length() > 0) methodMeta.append(",");
             methodMeta.append(methodNames.get(i)).append(":").append(methodSubIndices.get(i));
         }
+        StringBuilder staticMethodMeta = new StringBuilder();
+        for (int i = 0; i < staticMethodNames.size(); i++) {
+            if (staticMethodMeta.length() > 0) staticMethodMeta.append(",");
+            staticMethodMeta.append(staticMethodNames.get(i)).append(":").append(staticMethodSubIndices.get(i));
+        }
 
-        // DEFINE_CLASS: dst=classReg, a=fieldInitSubIdx, b=ctorSubIdx
-        // name = "className|parentName|fieldMeta|methodMeta"
+        // DEFINE_CLASS: dst=classReg, a=fieldInitSubIdx, b=ctorSubIdx, c=staticInitSubIdx
+        // name = "className|parentName|fieldMeta|methodMeta|staticFieldMeta|staticMethodMeta"
         String parentName = stmt.getParentName() != null ? stmt.getParentName() : "";
         IRInstruction defineClass = IRInstruction.of(IROpCode.DEFINE_CLASS, classReg, fieldInitSubIdx, ctorSubIdx);
-        defineClass.name = stmt.getName() + "|" + parentName + "|" + fieldMeta + "|" + methodMeta;
+        defineClass.c = staticInitSubIdx;
+        defineClass.name = stmt.getName() + "|" + parentName + "|" + fieldMeta + "|" + methodMeta
+                + "|" + staticFieldMeta + "|" + staticMethodMeta;
 
         // 注解元数据：存入 metadata 字段，Interpreter 在 DEFINE_CLASS 时读取
         defineClass.metadata = buildClassAnnotationMeta(stmt);

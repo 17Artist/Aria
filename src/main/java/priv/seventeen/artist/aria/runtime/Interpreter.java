@@ -560,6 +560,27 @@ public class Interpreter {
                     case GET_PROP: {
                         IValue<?> obj = registers[inst.a];
                         String propName = inst.name;
+                        if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof ClassDefinition cd) {
+                            // 静态字段
+                            if (cd.hasStaticField(propName)) {
+                                registers[inst.dst] = cd.getStaticField(propName);
+                                break;
+                            }
+                            // 静态方法 → FunctionValue
+                            IRProgram sm = cd.findStaticMethod(propName);
+                            if (sm != null) {
+                                final IRProgram smRef = sm;
+                                ICallable callable = data -> {
+                                    Context ctx = data.getContext() != null ? data.getContext() : context;
+                                    Context callCtx = ctx.createCallContext(null, data.getArgs());
+                                    return execute(smRef, callCtx).getValue();
+                                };
+                                registers[inst.dst] = new FunctionValue(callable);
+                                break;
+                            }
+                            registers[inst.dst] = NoneValue.NONE;
+                            break;
+                        }
                         if (obj instanceof ObjectValue<?> ov) {
                             IAriaObject so = ov.jvmValue();
                             Variable v = so.getVariable(propName);
@@ -623,6 +644,11 @@ public class Interpreter {
                         IValue<?> obj = registers[inst.dst];
                         IValue<?> val = registers[inst.a];
                         String propName = inst.name;
+                        if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof ClassDefinition cd) {
+                            // 静态字段写入
+                            cd.setStaticField(propName, val);
+                            break;
+                        }
                         if (obj instanceof ObjectValue<?> ov) {
                             IAriaObject so = ov.jvmValue();
                             Variable v = so.getVariable(propName);
@@ -1309,13 +1335,15 @@ public class Interpreter {
                         break;
                     }
                     case DEFINE_CLASS: {
-                        // DEFINE_CLASS: dst=classReg, a=fieldInitSubIdx, b=ctorSubIdx
-                        // name = "className|parentName|fieldMeta|methodMeta"
+                        // DEFINE_CLASS: dst=classReg, a=fieldInitSubIdx, b=ctorSubIdx, c=staticInitSubIdx
+                        // name = "className|parentName|fieldMeta|methodMeta|staticFieldMeta|staticMethodMeta"
                         String[] parts = inst.name.split("\\|", -1);
                         String className = parts[0];
                         String parentName = parts.length > 1 ? parts[1] : "";
                         String fieldMetaStr = parts.length > 2 ? parts[2] : "";
                         String methodMetaStr = parts.length > 3 ? parts[3] : "";
+                        String staticFieldMetaStr = parts.length > 4 ? parts[4] : "";
+                        String staticMethodMetaStr = parts.length > 5 ? parts[5] : "";
 
                         ClassDefinition classDef = new ClassDefinition(className);
 
@@ -1340,9 +1368,25 @@ public class Interpreter {
                             }
                         }
 
+                        // 静态字段元数据
+                        if (!staticFieldMetaStr.isEmpty()) {
+                            for (String fm : staticFieldMetaStr.split(",")) {
+                                if (fm.startsWith("var.")) {
+                                    classDef.addStaticField(fm.substring(4), true);
+                                } else if (fm.startsWith("val.")) {
+                                    classDef.addStaticField(fm.substring(4), false);
+                                }
+                            }
+                        }
+
                         // 设置字段初始化程序
                         if (inst.a >= 0 && inst.a < subPrograms.length) {
                             classDef.setFieldInitProgram(subPrograms[inst.a]);
+                        }
+
+                        // 静态初始化子程序
+                        if (inst.c >= 0 && inst.c < subPrograms.length) {
+                            classDef.setStaticInitProgram(subPrograms[inst.c]);
                         }
 
                         // 解析方法元数据并设置方法程序
@@ -1353,6 +1397,19 @@ public class Interpreter {
                                     int subIdx = Integer.parseInt(mp[1]);
                                     if (subIdx >= 0 && subIdx < subPrograms.length) {
                                         classDef.addMethod(mp[0], subPrograms[subIdx]);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 静态方法元数据
+                        if (!staticMethodMetaStr.isEmpty()) {
+                            for (String mm : staticMethodMetaStr.split(",")) {
+                                String[] mp = mm.split(":", 2);
+                                if (mp.length == 2) {
+                                    int subIdx = Integer.parseInt(mp[1]);
+                                    if (subIdx >= 0 && subIdx < subPrograms.length) {
+                                        classDef.addStaticMethod(mp[0], subPrograms[subIdx]);
                                     }
                                 }
                             }
@@ -1398,6 +1455,14 @@ public class Interpreter {
                         }
 
                         registers[inst.dst] = new ObjectValue<>(classDef);
+
+                        // 运行静态字段初始化：self = ObjectValue<ClassDefinition>，
+                        // SET_PROP 走 ClassDefinition 分支写入 staticFields
+                        if (classDef.getStaticInitProgram() != null) {
+                            Context staticCtx = context.createCallContext(
+                                    (IValue<?>) registers[inst.dst], EMPTY_ARGS);
+                            execute(classDef.getStaticInitProgram(), staticCtx);
+                        }
                         break;
                     }
 
@@ -2090,6 +2155,24 @@ public class Interpreter {
         private IValue<?> dispatchMethodCall(Context context, IValue<?> obj, String methodName,
                                           IValue<?>[] callArgs, int argCount) throws AriaException {
         if (obj == null || obj instanceof NoneValue) return NoneValue.NONE;
+
+        // ClassDefinition — 静态方法调用 ClassName.staticMethod(args)
+        if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof ClassDefinition cd) {
+            IRProgram sm = cd.findStaticMethod(methodName);
+            if (sm != null) {
+                Context callCtx = context.createCallContext(null, callArgs);
+                return execute(sm, callCtx).getValue();
+            }
+            // 静态字段恰好是 FunctionValue 的也支持
+            if (cd.hasStaticField(methodName)) {
+                IValue<?> v = cd.getStaticField(methodName);
+                if (v instanceof FunctionValue fv) {
+                    Context callCtx = context.createCallContext(null, callArgs);
+                    return fv.getCallable().invoke(new InvocationData(callCtx, null, callArgs));
+                }
+            }
+            return NoneValue.NONE;
+        }
 
         // AriaClassValue — 脚本类实例
         if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {

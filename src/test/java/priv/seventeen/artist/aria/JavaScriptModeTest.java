@@ -727,4 +727,107 @@ class JavaScriptModeTest {
             """);
         assertEquals(3.0, result.numberValue());
     }
+
+    @Test
+    void testStaticFieldRead() throws AriaException {
+        IValue<?> result = evalJS("""
+            class C {
+                static answer = 42
+            }
+            return C.answer;
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticFieldWrite() throws AriaException {
+        IValue<?> result = evalJS("""
+            class C {
+                static counter = 0
+            }
+            C.counter = 5;
+            C.counter = C.counter + 3;
+            return C.counter;
+            """);
+        assertEquals(8.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticMethodCall() throws AriaException {
+        IValue<?> result = evalJS("""
+            class M {
+                static add(a, b) { return a + b; }
+                static sq(x) { return x * x; }
+            }
+            return M.add(3, M.sq(5));
+            """);
+        assertEquals(28.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticMethodAccessesStaticField() throws AriaException {
+        IValue<?> result = evalJS("""
+            class Counter {
+                static count = 0
+                static inc() { Counter.count = Counter.count + 1; return Counter.count; }
+            }
+            Counter.inc();
+            Counter.inc();
+            return Counter.inc();
+            """);
+        assertEquals(3.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticAndInstanceCoexist() throws AriaException {
+        IValue<?> result = evalJS("""
+            class P {
+                static origin = 0
+                constructor(x) { this.x = x; }
+                offset() { return this.x - P.origin; }
+            }
+            P.origin = 10;
+            let p = new P(25);
+            return p.offset();
+            """);
+        assertEquals(15.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticInheritedField() throws AriaException {
+        IValue<?> result = evalJS("""
+            class Base { static k = 7 }
+            class Derived extends Base {}
+            return Derived.k + Base.k;
+            """);
+        assertEquals(14.0, result.numberValue());
+    }
+
+    @Test
+    void testStaticInheritedMethod() throws AriaException {
+        IValue<?> result = evalJS("""
+            class Base { static greet(n) { return 'hi ' + n; } }
+            class Derived extends Base {}
+            return Derived.greet('Aria');
+            """);
+        assertEquals("hi Aria", result.stringValue());
+    }
+
+    @Test
+    void testJsSuperMethodCall() throws AriaException {
+        // super.method() 在 JS 模式下也应工作
+        IValue<?> result = evalJS("""
+            class Animal {
+                constructor(n) { this.name = n; }
+                describe() { return this.name + ' is an animal'; }
+            }
+            class Dog extends Animal {
+                constructor(n) { super(n); }
+                describe() { return super.describe() + ' (dog)'; }
+            }
+            let d = new Dog('Rex');
+            return d.describe();
+            """);
+        assertEquals("Rex is an animal (dog)", result.stringValue());
+    }
 }

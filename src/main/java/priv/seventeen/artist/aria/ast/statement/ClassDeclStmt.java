@@ -50,8 +50,17 @@ public class ClassDeclStmt extends ASTNode {
     public ASTNode getConstructor() { return constructor; }
 
     public record ClassFieldDecl(String name, boolean mutable, ASTNode defaultValue,
-                                 List<AnnotationExpr> annotations) {}
+                                 List<AnnotationExpr> annotations, boolean isStatic) {
+        public ClassFieldDecl(String name, boolean mutable, ASTNode defaultValue,
+                              List<AnnotationExpr> annotations) {
+            this(name, mutable, defaultValue, annotations, false);
+        }
+    }
 
     public record ClassMethodDecl(String name, ASTNode body,
-                                  List<AnnotationExpr> annotations) {}
+                                  List<AnnotationExpr> annotations, boolean isStatic) {
+        public ClassMethodDecl(String name, ASTNode body, List<AnnotationExpr> annotations) {
+            this(name, body, annotations, false);
+        }
+    }
 }
