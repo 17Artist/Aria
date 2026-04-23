@@ -121,9 +121,11 @@ public class JITCompiler {
                 case CALL_STATIC:
                     if (isSupportedStaticCall(inst)) break;
                     if (inst.name != null && inst.name.contains(".")) break;
-                    // 自递归：CALL_STATIC 名字与本 program 名字一致（编译器在 var.fn = -> 时把 fn 名传给 subProg）
-                    // 数值 / 非数值路径都允许 — 非数值路径走 rtCallByName + 干净 callCtx（在 NEW_FUNCTION 包装层解决 scope 隔离）
-                    if (inst.name != null && inst.name.equals(program.getName())) break;
+                    // 自递归 CALL_STATIC 暂时不作为"可 JIT"信号：Stage 4b 引入的 fastDoubleRecursion
+                    // CALL_STATIC 字节码生成存在正确性 bug（fib(25) JIT 后返回 0.0），已在
+                    // detectSelfRecursion 关闭；这里一并关闭对自递归的 canCompile 放行，让这类
+                    // 函数退回解释器执行。
+                    // if (inst.name != null && inst.name.equals(program.getName())) break;
                     if (inst.name != null) {
                         boolean canInline = false;
                         for (int j = 0; j < code.length - 1; j++) {
@@ -402,9 +404,12 @@ public class JITCompiler {
                 }
             }
             // CALL_STATIC name=<self> 也是自递归 — 编译器把 var.fib = -> 时 fib 的名字传给了 subProg.name
-            if (inst.opcode == IROpCode.CALL_STATIC && selfName != null && selfName.equals(inst.name)) {
-                result.add(pc);
-            }
+            // CALL_STATIC 自递归曾被纳入 fastDoubleRecursion 路径，但生成的字节码有正确性问题
+            // （JIT 触发后 fib(25) 会返回 0.0 而非 75025），暂时关闭此路径，让 CALL_STATIC 自递归
+            // 的函数退回到解释器执行；待后续定位 bug 后再开启。
+            // if (inst.opcode == IROpCode.CALL_STATIC && selfName != null && selfName.equals(inst.name)) {
+            //     result.add(pc);
+            // }
         }
         return result;
     }

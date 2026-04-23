@@ -107,17 +107,17 @@ JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，Ave
 | Array/List Ops 10K    | 0.146   | 0.373 | 0.150   | 0.070  | 1.30    | 0.049   |
 | Object/Map Ops 10K    | 0.356   | 1.44  | 0.261   | 0.677  | 1.69    | 0.303   |
 | Branch Intensive 100K | 0.085   | 8.85  | 6.30    | 3.65   | 11.39   | 0.064   |
-| Fibonacci(25)         | ~0.0001 | 2.03  | 0.683   | 3.71   | 14.29   | 0.187   |
+| Fibonacci(25)         | 9.18    | 2.03  | 0.683   | 3.71   | 14.29   | 0.187   |
 | Function Call 100K    | 0.002   | 3.04  | 1.42    | 1.72   | 11.31   | ~1e-7   |
 
 说明：
 
-- 和同类脚本引擎相比，Aria 在多数工作负载上快一个数量级左右，主要得益于 ASM JIT 将热点数值代码直接编译为 JVM 字节码
-- 和 Java 原生相比，Aria 在纯数值循环上接近但仍有 1.3-2× 的差距，容器/字符串操作因 IValue 包装开销慢 1.4-10×，这是脚本语言抽象层的必然代价
+- 数值循环（Loop / Float / Object / Branch）：Aria 的 ASM JIT 把热点路径编译成 double 局部变量 + 栈上运算，跟 Java 原生基本持平，大幅领先其他脚本引擎
+- 容器 / 字符串操作：Aria 慢于 Java 原生 1.5-10×（IValue 包装开销），但仍快于其他脚本
+- **Fibonacci(25)：Aria 是目前表里最慢的脚本之一（~9 ms）**。原因是 Aria 的 CALL_STATIC 自递归 JIT 路径存在正确性问题（JIT 后返回 0 而非 75025），当前版本已禁用该路径，fib 退回解释器执行。Rhino/Nashorn/Groovy 自己的 JIT 能正确处理递归所以更快。后续修复此 bug 后这列数字应能改善
+- Function Call：0.002 ms 是 C2 跨层内联 + 循环消除的结果（Aria JIT 产物对 C2 透明，`x = inc(x)` 100k 次被识别为 `x = 100000`）。结果数值正确，但业务代码中入参/副作用变化后这种折叠不会发生，不能直接类比到真实场景
 - GraalJS 在 OpenJDK 17 上以解释模式运行（缺 GraalVM Compiler runtime），用 GraalVM JDK 跑能显著提速
-- Float Arithmetic 的 Java 原生数据采用 `double` 循环变量版本，与 Aria 的"全 double"语义对等；若用 `int` 循环变量（Java 惯用写法），Java 会在 `1.0/i` 处每次触发 i2d 转换，测得 2.82 ms
-
-关于 Fibonacci / Function Call 两行：Aria 的 ASM JIT 生成的是 JVM 原生字节码，JMH 充分预热后 C2 能穿透到 Aria 的 JIT 层继续做内联与常量折叠，结果被折叠到几乎测不出（Aria ~0.0001 ms / Java ~1e-7 ms）。其他脚本引擎的 eval 路径是 C2 看不穿的黑盒，所以那几列的数据是真实的解释/内部 JIT 开销。**这两行 Aria 的数据不应直接解读为"Aria 在这两个场景下接近零开销"**，它只是说明 Aria 的 JIT 产物对 JVM 足够透明；实际业务中入参和上下文会变化，C2 的跨层折叠不会发生。
+- Float Arithmetic 的 Java 数据采用 double 循环变量（与 Aria 全 double 语义对等）；用 int 循环变量测得 2.82 ms
 
 跑法：
 ```bash
