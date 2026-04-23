@@ -292,4 +292,42 @@ public class OptimizerTest {
         assertNotNull(ast);
         assertFalse(parser.hasErrors());
     }
+
+    // 代数化简
+
+    @Test
+    void testAlgebraicAddZero() throws AriaException {
+        // x + 0 应化简为 MOVE x
+        IValue<?> result = eval("var.x = 7\nreturn x + 0\n");
+        assertEquals(7.0, result.numberValue());
+        IValue<?> r2 = eval("var.x = 7\nreturn 0 + x\n");
+        assertEquals(7.0, r2.numberValue());
+    }
+
+    @Test
+    void testAlgebraicSubZero() throws AriaException {
+        IValue<?> result = eval("var.x = 9\nreturn x - 0\n");
+        assertEquals(9.0, result.numberValue());
+    }
+
+    @Test
+    void testAlgebraicMulOne() throws AriaException {
+        IValue<?> result = eval("var.x = 13\nreturn x * 1\n");
+        assertEquals(13.0, result.numberValue());
+        IValue<?> r2 = eval("var.x = 13\nreturn 1 * x\n");
+        assertEquals(13.0, r2.numberValue());
+    }
+
+    @Test
+    void testAlgebraicDivOne() throws AriaException {
+        IValue<?> result = eval("var.x = 21\nreturn x / 1\n");
+        assertEquals(21.0, result.numberValue());
+    }
+
+    @Test
+    void testAlgebraicChained() throws AriaException {
+        // 组合：x + 0 + 0 + 0 * (unused) → x
+        IValue<?> result = eval("var.x = 5\nreturn (x + 0) * 1 - 0\n");
+        assertEquals(5.0, result.numberValue());
+    }
 }

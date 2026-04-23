@@ -17,6 +17,7 @@
 package priv.seventeen.artist.aria.compiler;
 
 import priv.seventeen.artist.aria.compiler.ir.IRProgram;
+import priv.seventeen.artist.aria.compiler.optimize.AlgebraicSimplification;
 import priv.seventeen.artist.aria.compiler.optimize.ConstantFolding;
 import priv.seventeen.artist.aria.compiler.optimize.DeadCodeElimination;
 import priv.seventeen.artist.aria.compiler.optimize.ExpressionFlattening;
@@ -24,12 +25,14 @@ import priv.seventeen.artist.aria.compiler.optimize.ExpressionFlattening;
 public class Optimizer {
 
     private final ConstantFolding constantFolding = new ConstantFolding();
+    private final AlgebraicSimplification algebraicSimplification = new AlgebraicSimplification();
     private final ExpressionFlattening expressionFlattening = new ExpressionFlattening();
     private final DeadCodeElimination deadCodeElimination = new DeadCodeElimination();
 
     public IRProgram optimize(IRProgram program) {
         IRProgram result = program;
         result = constantFolding.optimize(result);
+        result = algebraicSimplification.optimize(result);
         result = expressionFlattening.optimize(result);
         result = deadCodeElimination.optimize(result);
         return result;
