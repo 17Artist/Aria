@@ -671,4 +671,60 @@ class JavaScriptModeTest {
                 ctx, Aria.Mode.JAVASCRIPT);
         assertEquals("Hello, World!", result.stringValue());
     }
+
+    @Test
+    void testAsiContinuationLeadingPlus() throws AriaException {
+        // 行首 + 续行（标准 JS ASI 规则：+ 不能开始新语句，自动续行）
+        IValue<?> result = evalJS("""
+            let s = 'a'
+                + 'b'
+                + 'c';
+            return s;
+            """);
+        assertEquals("abc", result.stringValue());
+    }
+
+    @Test
+    void testAsiContinuationLeadingMinus() throws AriaException {
+        IValue<?> result = evalJS("""
+            let n = 10
+                - 3
+                - 2;
+            return n;
+            """);
+        assertEquals(5.0, result.numberValue());
+    }
+
+    @Test
+    void testAsiContinuationLeadingDot() throws AriaException {
+        // 行首 . 续行 — 链式方法
+        IValue<?> result = evalJS("""
+            let s = 'hello'
+                .toUpperCase();
+            return s;
+            """);
+        assertEquals("HELLO", result.stringValue());
+    }
+
+    @Test
+    void testAsiContinuationLogicalAndTernary() throws AriaException {
+        IValue<?> result = evalJS("""
+            let a = true
+                && 1 + 2
+                + 4;
+            return a;
+            """);
+        assertEquals(7.0, result.numberValue());
+    }
+
+    @Test
+    void testAsiContinuationDoesNotEatRealNewline() throws AriaException {
+        // 不在续行的真换行不应被吞掉：两个语句各自独立
+        IValue<?> result = evalJS("""
+            let a = 1
+            let b = 2
+            return a + b;
+            """);
+        assertEquals(3.0, result.numberValue());
+    }
 }

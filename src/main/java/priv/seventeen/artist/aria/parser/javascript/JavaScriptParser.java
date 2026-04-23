@@ -76,6 +76,33 @@ public class JavaScriptParser {
         while (current.getType() == TokenType.NEWLINE) advance();
     }
 
+    /**
+     * ASI 续行检测：如果 current 已是 ops 之一，返回 true；
+     * 如果 current 是 NEWLINE，多 token 前瞻跨过所有 NEWLINE，
+     * 若下一个非 NEWLINE 是 ops 之一则消费掉中间所有 NEWLINE 并把 current 推进到该 op，返回 true。
+     * 不匹配时不消费任何 token。
+     */
+    private boolean checkContinuationOp(TokenType... ops) throws CompileException {
+        for (TokenType op : ops) if (current.getType() == op) return true;
+        if (current.getType() != TokenType.NEWLINE) return false;
+        java.util.List<Token> scanned = new java.util.ArrayList<>();
+        Token next;
+        while (true) {
+            next = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
+            scanned.add(next);
+            if (next.getType() != TokenType.NEWLINE) break;
+            if (next.getType() == TokenType.EOF) break;
+        }
+        boolean match = false;
+        for (TokenType op : ops) if (next.getType() == op) { match = true; break; }
+        if (match) {
+            current = next;
+            return true;
+        }
+        for (int i = scanned.size() - 1; i >= 0; i--) lookaheadBuffer.addFirst(scanned.get(i));
+        return false;
+    }
+
     private void consumeStmtEnd() throws CompileException {
         while (current.getType() == TokenType.SEMICOLON || current.getType() == TokenType.NEWLINE) {
             advance();
@@ -1153,7 +1180,7 @@ public class JavaScriptParser {
 
     private ASTNode parseTernaryExpr() throws CompileException {
         ASTNode expr = parseOrExpr();
-        if (check(TokenType.QUESTION)) {
+        if (checkContinuationOp(TokenType.QUESTION)) {
             advance();
             skipNewlines();
             ASTNode thenExpr = parseAssignExpr();
@@ -1168,7 +1195,7 @@ public class JavaScriptParser {
 
     private ASTNode parseOrExpr() throws CompileException {
         ASTNode left = parseAndExpr();
-        while (check(TokenType.OR)) {
+        while (checkContinuationOp(TokenType.OR)) {
             advance();
             skipNewlines();
             ASTNode right = parseAndExpr();
@@ -1179,7 +1206,7 @@ public class JavaScriptParser {
 
     private ASTNode parseAndExpr() throws CompileException {
         ASTNode left = parseNullishExpr();
-        while (check(TokenType.AND)) {
+        while (checkContinuationOp(TokenType.AND)) {
             advance();
             skipNewlines();
             ASTNode right = parseNullishExpr();
@@ -1190,7 +1217,7 @@ public class JavaScriptParser {
 
     private ASTNode parseNullishExpr() throws CompileException {
         ASTNode left = parseBitOrExpr();
-        while (check(TokenType.NULLISH_COALESCE)) {
+        while (checkContinuationOp(TokenType.NULLISH_COALESCE)) {
             advance();
             skipNewlines();
             ASTNode right = parseBitOrExpr();
@@ -1201,7 +1228,7 @@ public class JavaScriptParser {
 
     private ASTNode parseBitOrExpr() throws CompileException {
         ASTNode left = parseBitXorExpr();
-        while (check(TokenType.BIT_OR)) {
+        while (checkContinuationOp(TokenType.BIT_OR)) {
             advance();
             skipNewlines();
             ASTNode right = parseBitXorExpr();
@@ -1212,7 +1239,7 @@ public class JavaScriptParser {
 
     private ASTNode parseBitXorExpr() throws CompileException {
         ASTNode left = parseBitAndExpr();
-        while (check(TokenType.BIT_XOR)) {
+        while (checkContinuationOp(TokenType.BIT_XOR)) {
             advance();
             skipNewlines();
             ASTNode right = parseBitAndExpr();
@@ -1223,7 +1250,7 @@ public class JavaScriptParser {
 
     private ASTNode parseBitAndExpr() throws CompileException {
         ASTNode left = parseEqExpr();
-        while (check(TokenType.BIT_AND)) {
+        while (checkContinuationOp(TokenType.BIT_AND)) {
             advance();
             skipNewlines();
             ASTNode right = parseEqExpr();
@@ -1234,7 +1261,7 @@ public class JavaScriptParser {
 
     private ASTNode parseEqExpr() throws CompileException {
         ASTNode left = parseRelExpr();
-        while (true) {
+        while (checkContinuationOp(TokenType.EQ, TokenType.STRICT_EQ, TokenType.NE, TokenType.STRICT_NE)) {
             BinaryExpr.BinaryOp op = switch (current.getType()) {
                 case EQ, STRICT_EQ -> BinaryExpr.BinaryOp.EQ;
                 case NE, STRICT_NE -> BinaryExpr.BinaryOp.NE;
@@ -1251,7 +1278,8 @@ public class JavaScriptParser {
 
     private ASTNode parseRelExpr() throws CompileException {
         ASTNode left = parseShiftExpr();
-        while (true) {
+        while (checkContinuationOp(TokenType.LT, TokenType.GT, TokenType.LE, TokenType.GE,
+                TokenType.IN_RANGE, TokenType.INSTANCEOF, TokenType.IN)) {
             BinaryExpr.BinaryOp op = switch (current.getType()) {
                 case LT -> BinaryExpr.BinaryOp.LT;
                 case GT -> BinaryExpr.BinaryOp.GT;
@@ -1274,7 +1302,7 @@ public class JavaScriptParser {
 
     private ASTNode parseShiftExpr() throws CompileException {
         ASTNode left = parseAddExpr();
-        while (true) {
+        while (checkContinuationOp(TokenType.SHL, TokenType.SHR, TokenType.USHR)) {
             BinaryExpr.BinaryOp op = switch (current.getType()) {
                 case SHL -> BinaryExpr.BinaryOp.SHL;
                 case SHR -> BinaryExpr.BinaryOp.SHR;
@@ -1292,7 +1320,7 @@ public class JavaScriptParser {
 
     private ASTNode parseAddExpr() throws CompileException {
         ASTNode left = parseMulExpr();
-        while (true) {
+        while (checkContinuationOp(TokenType.PLUS, TokenType.MINUS)) {
             BinaryExpr.BinaryOp op = switch (current.getType()) {
                 case PLUS -> BinaryExpr.BinaryOp.ADD;
                 case MINUS -> BinaryExpr.BinaryOp.SUB;
@@ -1309,7 +1337,7 @@ public class JavaScriptParser {
 
     private ASTNode parseMulExpr() throws CompileException {
         ASTNode left = parseUnaryExpr();
-        while (true) {
+        while (checkContinuationOp(TokenType.STAR, TokenType.SLASH, TokenType.PERCENT)) {
             BinaryExpr.BinaryOp op = switch (current.getType()) {
                 case STAR -> BinaryExpr.BinaryOp.MUL;
                 case SLASH -> BinaryExpr.BinaryOp.DIV;
@@ -1420,7 +1448,7 @@ public class JavaScriptParser {
             } else if (check(TokenType.LPAREN)) {
                 // 函数调用
                 expr = parseCallArgs(expr);
-            } else if (check(TokenType.DOT)) {
+            } else if (checkContinuationOp(TokenType.DOT)) {
                 advance();
                 skipNewlines();
                 // Nashorn 兼容：.static 直接吞掉
@@ -1430,7 +1458,7 @@ public class JavaScriptParser {
                     String prop = expect(TokenType.IDENTIFIER).getValue();
                     expr = new DotExpr(loc(expr), expr, prop);
                 }
-            } else if (check(TokenType.OPTIONAL_CHAIN)) {
+            } else if (checkContinuationOp(TokenType.OPTIONAL_CHAIN)) {
                 advance();
                 skipNewlines();
                 String prop = expect(TokenType.IDENTIFIER).getValue();
