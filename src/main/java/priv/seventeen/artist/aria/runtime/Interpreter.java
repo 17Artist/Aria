@@ -1123,10 +1123,14 @@ public class Interpreter {
                                 // 纯数值 JIT 路径：直接复用 compiled，省一层 lambda + InvocationData
                                 registers[inst.dst] = new FunctionValue(compiled);
                             } else {
+                                // 非纯数值 JIT 路径：必须 createCallContext 给一个干净的 ScopeStack，
+                                // 否则 PUSH_SCOPE / STORE_SCOPE 会污染调用方的 scope（递归时 LOAD_SCOPE n
+                                // 会读到被覆盖的值）
                                 registers[inst.dst] = new FunctionValue(data -> {
-                                    Context ctx = data.getContext() != null ? data.getContext() : capturedCtx;
-                                    // 透传：避免 data.getArgs() 数组拷贝
-                                    return compiled.invoke(new InvocationData(ctx, null, data));
+                                    Context callCtx = capturedCtx.createCallContext(
+                                            data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE,
+                                            data.getArgs());
+                                    return compiled.invoke(new InvocationData(callCtx, null, data));
                                 });
                             }
                         } else {
@@ -1162,7 +1166,20 @@ public class Interpreter {
                                 }
                                 // JIT 编译完成后切换到编译代码（沙箱模式下跳过 JIT）
                                 if (subProg.isCompiled() && noSandbox) {
-                                    return subProg.getCompiledCode().invoke(data);
+                                    if (subProg.isJitContextFree()) {
+                                        return subProg.getCompiledCode().invoke(data);
+                                    }
+                                    // 非纯数值路径：必须 createCallContext 给干净 ScopeStack，
+                                    // 否则递归时 PUSH_SCOPE / STORE_SCOPE 污染调用方 scope
+                                    Context jitCallCtx = lightContext
+                                        ? capturedCtx.createLightCallContext(
+                                            data.getTarget() instanceof IValue<?> t1 ? t1 : NoneValue.NONE,
+                                            data.getArgs())
+                                        : capturedCtx.createCallContext(
+                                            data.getTarget() instanceof IValue<?> t2 ? t2 : NoneValue.NONE,
+                                            data.getArgs());
+                                    return subProg.getCompiledCode().invoke(
+                                            new InvocationData(jitCallCtx, null, data));
                                 }
                                 Context callCtx = lightContext
                                     ? capturedCtx.createLightCallContext(

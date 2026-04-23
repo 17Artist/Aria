@@ -79,10 +79,6 @@ public class JITCompiler {
         IRInstruction[] code = program.getInstructions();
         if (code == null || code.length == 0) return false;
 
-        // 仅当函数本身全数值时，才允许 CALL_STATIC 自递归（fastDoubleRecursion 路径专用）。
-        // 非数值路径的 CALL_STATIC 自递归走 rtCallByName 兜底，与解释器结果不一致，先禁用。
-        boolean numericForCallStaticSelfRec = isNumericOnly(code);
-
         for (IRInstruction inst : code) {
             switch (inst.opcode) {
                 // 支持的指令
@@ -126,8 +122,8 @@ public class JITCompiler {
                     if (isSupportedStaticCall(inst)) break;
                     if (inst.name != null && inst.name.contains(".")) break;
                     // 自递归：CALL_STATIC 名字与本 program 名字一致（编译器在 var.fn = -> 时把 fn 名传给 subProg）
-                    // 仅在 numericOnly 路径下允许（走 fastDoubleRecursion，emit INVOKESTATIC callFast）
-                    if (inst.name != null && inst.name.equals(program.getName()) && numericForCallStaticSelfRec) break;
+                    // 数值 / 非数值路径都允许 — 非数值路径走 rtCallByName + 干净 callCtx（在 NEW_FUNCTION 包装层解决 scope 隔离）
+                    if (inst.name != null && inst.name.equals(program.getName())) break;
                     if (inst.name != null) {
                         boolean canInline = false;
                         for (int j = 0; j < code.length - 1; j++) {
