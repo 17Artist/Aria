@@ -121,11 +121,7 @@ public class JITCompiler {
                 case CALL_STATIC:
                     if (isSupportedStaticCall(inst)) break;
                     if (inst.name != null && inst.name.contains(".")) break;
-                    // 自递归 CALL_STATIC 暂时不作为"可 JIT"信号：Stage 4b 引入的 fastDoubleRecursion
-                    // CALL_STATIC 字节码生成存在正确性 bug（fib(25) JIT 后返回 0.0），已在
-                    // detectSelfRecursion 关闭；这里一并关闭对自递归的 canCompile 放行，让这类
-                    // 函数退回解释器执行。
-                    // if (inst.name != null && inst.name.equals(program.getName())) break;
+                    if (inst.name != null && inst.name.equals(program.getName())) break;
                     if (inst.name != null) {
                         boolean canInline = false;
                         for (int j = 0; j < code.length - 1; j++) {
@@ -356,6 +352,14 @@ public class JITCompiler {
 
         // 6. 加载类
         byte[] bytecode = cw.toByteArray();
+        String dumpDir = System.getProperty("aria.jit.dump");
+        if (dumpDir != null) {
+            try {
+                java.io.File dir = new java.io.File(dumpDir);
+                dir.mkdirs();
+                java.nio.file.Files.write(new java.io.File(dir, className.replace('/', '_') + ".class").toPath(), bytecode);
+            } catch (java.io.IOException ignored) {}
+        }
         Class<?> clazz = loadClass(className.replace('/', '.'), bytecode);
 
         // 7. 设置静态字段
@@ -404,12 +408,9 @@ public class JITCompiler {
                 }
             }
             // CALL_STATIC name=<self> 也是自递归 — 编译器把 var.fib = -> 时 fib 的名字传给了 subProg.name
-            // CALL_STATIC 自递归曾被纳入 fastDoubleRecursion 路径，但生成的字节码有正确性问题
-            // （JIT 触发后 fib(25) 会返回 0.0 而非 75025），暂时关闭此路径，让 CALL_STATIC 自递归
-            // 的函数退回到解释器执行；待后续定位 bug 后再开启。
-            // if (inst.opcode == IROpCode.CALL_STATIC && selfName != null && selfName.equals(inst.name)) {
-            //     result.add(pc);
-            // }
+            if (inst.opcode == IROpCode.CALL_STATIC && selfName != null && selfName.equals(inst.name)) {
+                result.add(pc);
+            }
         }
         return result;
     }
@@ -424,7 +425,12 @@ public class JITCompiler {
                 case NEW_LIST, NEW_MAP:
                 case CALL_METHOD, SET_INDEX:
                     return false;
-                // NEW_FUNCTION 只是定义函数存到 var，不影响数值计算
+                // NEW_FUNCTION 产出一个函数对象（非数值），后续 STORE_VAR 会把它写到 var.x。
+                // fastDoubleVars / fastLongVars 把寄存器当作 double / long 处理，NEW_FUNCTION
+                // 被跳过后寄存器保持 0，STORE_VAR 会把 var.x 写成数字 0，函数值丢失。
+                // 因此包含 NEW_FUNCTION 的程序必须走通用 JIT 路径，不能走纯数值路径。
+                case NEW_FUNCTION:
+                    return false;
                 // CALL 不阻止 numericOnly — 自递归调用在 fastDouble 路径中被特殊处理
                 default:
                     break;

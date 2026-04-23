@@ -2,14 +2,14 @@
 // 数据来源：JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。
 // 单位 ms/op，越小越好。
 const rows = [
-  { name: 'Loop Arithmetic 1M',    aria: '0.236',  rhino: '25.23', nashorn: '14.30', groovy: '5.14',  graaljs: '94.05', java: '0.233'  },
-  { name: 'Float Arithmetic 1M',   aria: '1.93',   rhino: '26.13', nashorn: '14.02', groovy: '5.54',  graaljs: '85.49', java: '0.94'   },
-  { name: 'String Concat 100K',    aria: '0.84',   rhino: '2.74',  nashorn: '1.86',  groovy: '1.02',  graaljs: '8.25',  java: '0.112'  },
-  { name: 'Array/List Ops 10K',    aria: '0.146',  rhino: '0.373', nashorn: '0.150', groovy: '0.070', graaljs: '1.30',  java: '0.049'  },
-  { name: 'Object/Map Ops 10K',    aria: '0.356',  rhino: '1.44',  nashorn: '0.261', groovy: '0.677', graaljs: '1.69',  java: '0.303'  },
-  { name: 'Branch Intensive 100K', aria: '0.085',  rhino: '8.85',  nashorn: '6.30',  groovy: '3.65',  graaljs: '11.39', java: '0.064'  },
-  { name: 'Fibonacci(25)',         aria: '9.18',   rhino: '2.03',  nashorn: '0.683', groovy: '3.71',  graaljs: '14.29', java: '0.187'  },
-  { name: 'Function Call 100K',    aria: '0.002',  rhino: '3.04',  nashorn: '1.42',  groovy: '1.72',  graaljs: '11.31', java: '~1e-7'  },
+  { name: 'Loop Arithmetic 1M',    aria: '0.232',  rhino: '25.23', nashorn: '14.30', groovy: '5.14',  graaljs: '94.05', java: '0.233'  },
+  { name: 'Float Arithmetic 1M',   aria: '1.87',   rhino: '26.13', nashorn: '14.02', groovy: '5.54',  graaljs: '85.49', java: '0.94'   },
+  { name: 'String Concat 100K',    aria: '0.78',   rhino: '2.74',  nashorn: '1.86',  groovy: '1.02',  graaljs: '8.25',  java: '0.112'  },
+  { name: 'Array/List Ops 10K',    aria: '0.127',  rhino: '0.373', nashorn: '0.150', groovy: '0.070', graaljs: '1.30',  java: '0.049'  },
+  { name: 'Object/Map Ops 10K',    aria: '0.327',  rhino: '1.44',  nashorn: '0.261', groovy: '0.677', graaljs: '1.69',  java: '0.303'  },
+  { name: 'Branch Intensive 100K', aria: '0.070',  rhino: '8.85',  nashorn: '6.30',  groovy: '3.65',  graaljs: '11.39', java: '0.064'  },
+  { name: 'Fibonacci(25)',         aria: '0.211',  rhino: '2.03',  nashorn: '0.683', groovy: '3.71',  graaljs: '14.29', java: '0.187'  },
+  { name: 'Function Call 100K',    aria: '1.54',   rhino: '3.04',  nashorn: '1.42',  groovy: '1.72',  graaljs: '11.31', java: '~1e-7'  },
 ];
 ---
 
@@ -53,10 +53,9 @@ const rows = [
     </div>
 
     <div class="reveal text-[0.72rem] text-aria-ink-faint mt-4 max-w-3xl mx-auto space-y-1">
-      <p>注：数值循环（Loop / Float / Object / Branch）Aria 与 Java 原生基本持平，领先其他脚本引擎一个数量级左右。</p>
-      <p>注：容器 / 字符串操作因 IValue 包装开销慢于 Java 原生 1.5-10×。</p>
-      <p>注：Fibonacci Aria 较慢——自递归数值函数的 JIT 路径因正确性问题暂时关闭，当前走解释器。其他脚本引擎自己的 JIT 能处理递归所以更快，后续修复后此项应能改善。</p>
-      <p>注：Function Call 0.002 ms 是 C2 跨层折叠的结果（Aria JIT 产物对 C2 透明）；业务中入参/副作用变化后不会出现这种折叠。</p>
+      <p>注：数值循环 Aria 与 Java 原生基本持平；容器/字符串慢 1.4-7×（IValue 包装开销），但仍快于同类脚本。</p>
+      <p>注：Fibonacci(25) 0.21 ms 接近 Java 0.19 ms——ASM JIT 把数值递归编译为 static double callFast(double) 后 JVM C2 继续内联。</p>
+      <p>注：Function Call 100K Aria 与 Nashorn 接近（1.54 vs 1.42），Java 原生被 C2 识别为常量消除所以接近零。</p>
       <p>注：GraalJS 在 OpenJDK 17 上以解释模式运行，用 GraalVM JDK 跑能显著提速。</p>
       <p>注：Java Float Arithmetic 采用 double 循环变量；用 int 循环变量为 2.82 ms。</p>
     </div>
