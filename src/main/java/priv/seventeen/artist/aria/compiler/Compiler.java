@@ -1220,16 +1220,20 @@ public class Compiler {
     private void compileDestructure(DestructureStmt stmt) {
         // 编译右侧值
         int valueReg = compileNode(stmt.getValue(), -1);
+        boolean objectPattern = stmt.isObjectPattern();
 
         // 对每个命名变量，GET_INDEX 取值并 STORE_VAR/STORE_SCOPE
         for (int i = 0; i < stmt.getNames().size(); i++) {
-            int idxConst = addConstant(new NumberValue(i));
+            String name = stmt.getNames().get(i);
+            int idxConst = objectPattern
+                    ? addConstant(new StringValue(name))
+                    : addConstant(new NumberValue(i));
             int idxReg = nextRegister();
             emit(IRInstruction.of(IROpCode.LOAD_CONST, idxReg, idxConst), stmt.getLocation());
             int elemReg = nextRegister();
             emit(IRInstruction.of(IROpCode.GET_INDEX, elemReg, valueReg, idxReg), stmt.getLocation());
 
-            int ki = addVariableKey(stmt.getNames().get(i));
+            int ki = addVariableKey(name);
             if (stmt.isMutable()) {
                 emit(IRInstruction.of(IROpCode.STORE_VAR, elemReg, ki), stmt.getLocation());
             } else {
@@ -1238,8 +1242,8 @@ public class Compiler {
             }
         }
 
-        // ...rest 收集剩余元素
-        if (stmt.getRestName() != null) {
+        // ...rest 收集剩余元素（仅数组模式支持）
+        if (stmt.getRestName() != null && !objectPattern) {
             // 编译为: var.rest = value.subList(startIdx)
             // 通过 CALL_STATIC 调用内部辅助函数
             int startConst = addConstant(new NumberValue(stmt.getNames().size()));

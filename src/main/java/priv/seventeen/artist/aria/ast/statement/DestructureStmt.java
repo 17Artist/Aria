@@ -23,21 +23,30 @@ import java.util.List;
 
 public class DestructureStmt extends ASTNode {
     private final boolean mutable;          // var = true, val = false
-    private final List<String> names;       
+    private final List<String> names;
     private final String restName;          // ...rest 的名字，nullable
-    private final ASTNode value;            
+    private final ASTNode value;
+    private final boolean objectPattern;    // true = {a,b} 按名字取键；false = [a,b] 按数字索引
 
     public DestructureStmt(SourceLocation location, boolean mutable,
                            List<String> names, String restName, ASTNode value) {
+        this(location, mutable, names, restName, value, false);
+    }
+
+    public DestructureStmt(SourceLocation location, boolean mutable,
+                           List<String> names, String restName, ASTNode value,
+                           boolean objectPattern) {
         super(location);
         this.mutable = mutable;
         this.names = names;
         this.restName = restName;
         this.value = value;
+        this.objectPattern = objectPattern;
     }
 
     public boolean isMutable() { return mutable; }
     public List<String> getNames() { return names; }
     public String getRestName() { return restName; }
     public ASTNode getValue() { return value; }
+    public boolean isObjectPattern() { return objectPattern; }
 }

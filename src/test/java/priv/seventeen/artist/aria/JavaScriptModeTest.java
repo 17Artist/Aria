@@ -549,4 +549,126 @@ class JavaScriptModeTest {
             """);
         assertEquals(9.0, result.numberValue());
     }
+
+    @Test
+    void testObjectDestructure() throws AriaException {
+        IValue<?> result = evalJS("""
+            let o = { a: 1, b: 2, c: 3 };
+            let { a, b } = o;
+            return a * 10 + b;
+            """);
+        assertEquals(12.0, result.numberValue());
+    }
+
+    @Test
+    void testArrayDestructureJS() throws AriaException {
+        IValue<?> result = evalJS("""
+            let [x, y, z] = [10, 20, 30];
+            return x + y + z;
+            """);
+        assertEquals(60.0, result.numberValue());
+    }
+
+    @Test
+    void testFunctionObjectParamDestructure() throws AriaException {
+        IValue<?> result = evalJS("""
+            function sumFields({ a, b }) {
+                return a + b;
+            }
+            return sumFields({ a: 7, b: 35 });
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testObjectDestructureInsideFunction() throws AriaException {
+        // 对照测试：普通函数体里做对象解构应该能工作
+        IValue<?> result = evalJS("""
+            function f(o) {
+                let { a, b } = o;
+                return a + b;
+            }
+            return f({ a: 7, b: 35 });
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testMapGetIndexInsideFunction() throws AriaException {
+        // 回归：executeInlineInternal 快速路径 GET_INDEX 曾漏处理 MapValue/StringValue 索引
+        IValue<?> result = evalJS("""
+            function f(o) {
+                return o['a'] + o['b'];
+            }
+            return f({ a: 7, b: 35 });
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testObjectDestructureInsideIfBlock() throws AriaException {
+        // 对照测试：块内解构
+        IValue<?> result = evalJS("""
+            let o = { a: 7, b: 35 };
+            let r = 0;
+            if (true) {
+                let { a, b } = o;
+                r = a + b;
+            }
+            return r;
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testObjectDestructureLocalAccess() throws AriaException {
+        IValue<?> result = evalJS("""
+            let o = { a: 7, b: 35 };
+            let { a, b } = o;
+            return a + b;
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testFunctionArrayParamDestructure() throws AriaException {
+        IValue<?> result = evalJS("""
+            function first2([a, b]) {
+                return a * 10 + b;
+            }
+            return first2([4, 2]);
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testArrowObjectParamDestructure() throws AriaException {
+        IValue<?> result = evalJS("""
+            let f = ({ x, y }) => x + y;
+            return f({ x: 10, y: 32 });
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testJSONUppercaseAlias() throws AriaException {
+        IValue<?> parsed = evalJS("""
+            let o = JSON.parse('{"n": 42, "s": "ok"}');
+            return o.n;
+            """);
+        assertEquals(42.0, parsed.numberValue());
+        IValue<?> stringified = evalJS("""
+            return JSON.stringify({ a: 1 });
+            """);
+        assertEquals("{\"a\":1}", stringified.stringValue());
+    }
+
+    @Test
+    void testEvalModeOverloadTemplateString() throws AriaException {
+        // 验证通过 Aria.eval(code, ctx, Mode.JAVASCRIPT) 入口反引号可用
+        Context ctx = Aria.createContext();
+        IValue<?> result = Aria.eval("let n = 'World'; return `Hello, ${n}!`;",
+                ctx, Aria.Mode.JAVASCRIPT);
+        assertEquals("Hello, World!", result.stringValue());
+    }
 }

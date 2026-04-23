@@ -80,6 +80,15 @@ public final class Aria {
         }
     }
 
+        public static IValue<?> eval(String code, Context context, Mode mode) throws AriaException {
+        AriaCompilationUnit unit = compile(mode == Mode.JAVASCRIPT ? "eval.js" : "eval", context, code, mode);
+        try {
+            return unit.execute();
+        } finally {
+            Interpreter.resetCallDepth();
+        }
+    }
+
         public static IValue<?> eval(String code, Context context, SandboxConfig sandbox) throws AriaException {
         Interpreter.setSandbox(sandbox);
         try {

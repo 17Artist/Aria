@@ -37,6 +37,7 @@ public class JavaScriptParser {
 
     private final Lexer lexer;
     private Token current;
+    private final java.util.ArrayDeque<Token> lookaheadBuffer = new java.util.ArrayDeque<>();
 
     public JavaScriptParser(Lexer lexer) throws CompileException {
         this.lexer = lexer;
@@ -46,11 +47,12 @@ public class JavaScriptParser {
 
     private Token advance() throws CompileException {
         Token prev = current;
-        current = lexer.nextToken();
+        current = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
         return prev;
     }
 
     private Token peek() throws CompileException {
+        if (!lookaheadBuffer.isEmpty()) return lookaheadBuffer.peekFirst();
         return lexer.peek();
     }
 
@@ -294,7 +296,7 @@ public class JavaScriptParser {
         skipNewlines();
         ASTNode value = parseAssignExpr();
         consumeStmtEnd();
-        return new DestructureStmt(loc(start), mutable, names, restName, value);
+        return new DestructureStmt(loc(start), mutable, names, restName, value, true);
     }
 
 
@@ -314,16 +316,54 @@ public class JavaScriptParser {
                 new AssignmentExpr(loc(start), target, AssignmentExpr.AssignOp.ASSIGN, lambda));
     }
 
-        private record ParamInfo(String name, ASTNode defaultValue) {}
+        private record ParamInfo(String name, ASTNode defaultValue,
+                                 List<String> destructNames, boolean destructIsObject) {
+            ParamInfo(String name, ASTNode defaultValue) {
+                this(name, defaultValue, null, false);
+            }
+            boolean isDestructure() { return destructNames != null; }
+        }
 
     private List<ParamInfo> parseParamListWithDefaults() throws CompileException {
         expect(TokenType.LPAREN);
         skipNewlines();
         List<ParamInfo> params = new ArrayList<>();
+        int destructCounter = 0;
         while (!check(TokenType.RPAREN) && !check(TokenType.EOF)) {
             skipNewlines();
             if (check(TokenType.SPREAD)) {
                 advance();
+            }
+            // 解构参数: function f({a,b}, [c,d]) { ... }
+            if (check(TokenType.LBRACE) || check(TokenType.LBRACKET)) {
+                boolean isObject = check(TokenType.LBRACE);
+                TokenType close = isObject ? TokenType.RBRACE : TokenType.RBRACKET;
+                advance();
+                skipNewlines();
+                List<String> names = new ArrayList<>();
+                while (!check(close) && !check(TokenType.EOF)) {
+                    skipNewlines();
+                    if (check(TokenType.SPREAD)) { advance(); }
+                    names.add(expect(TokenType.IDENTIFIER).getValue());
+                    skipNewlines();
+                    if (!check(close)) { expect(TokenType.COMMA); skipNewlines(); }
+                }
+                expect(close);
+                skipNewlines();
+                ASTNode defaultValue = null;
+                if (check(TokenType.ASSIGN)) {
+                    advance();
+                    skipNewlines();
+                    defaultValue = parseAssignExpr();
+                }
+                String syntheticName = "$$destruct" + (destructCounter++);
+                params.add(new ParamInfo(syntheticName, defaultValue, names, isObject));
+                skipNewlines();
+                if (!check(TokenType.RPAREN)) {
+                    expect(TokenType.COMMA);
+                    skipNewlines();
+                }
+                continue;
             }
             String name = expect(TokenType.IDENTIFIER).getValue();
             skipNewlines();
@@ -386,12 +426,21 @@ public class JavaScriptParser {
         for (int i = 0; i < params.size(); i++) {
             ParamInfo p = params.get(i);
             // 使用裸标识符赋值 → STORE_SCOPE，确保每次函数调用有独立的参数作用域
-            ASTNode target = new IdentifierExpr(loc, p.name());
             ASTNode idx = new IndexExpr(loc, new IdentifierExpr(loc, "args"), new LiteralExpr(loc, new NumberValue(i)));
 
+            if (p.isDestructure()) {
+                // 解构参数: {a,b} 或 [a,b] 且可能有默认值
+                ASTNode rhs = idx;
+                if (p.defaultValue() != null) {
+                    rhs = new BinaryExpr(loc, idx, BinaryExpr.BinaryOp.NULLISH_COALESCE, p.defaultValue());
+                }
+                bindings.add(new DestructureStmt(loc, true, p.destructNames(), null, rhs, p.destructIsObject()));
+                continue;
+            }
+
+            ASTNode target = new IdentifierExpr(loc, p.name());
             if (p.defaultValue() != null) {
-                // param = args[i] == none ? defaultValue : args[i]
-                // 使用三元表达式: args[i] ?? defaultValue (nullish coalesce)
+                // param = args[i] ?? defaultValue
                 ASTNode value = new BinaryExpr(loc, idx, BinaryExpr.BinaryOp.NULLISH_COALESCE, p.defaultValue());
                 ASTNode assign = new AssignmentExpr(loc, target, AssignmentExpr.AssignOp.ASSIGN, value);
                 bindings.add(new ExpressionStmt(loc, assign));
@@ -1016,7 +1065,48 @@ public class JavaScriptParser {
         // (ident => 不可能，(ident) => 或 (ident, ...) =>
         // 无法用单 token peek 完全判断，采用试探法
         if (peeked.getType() == TokenType.IDENTIFIER || peeked.getType() == TokenType.SPREAD) return true;
+        // ({...}) => ... 或 ([...]) => ... — 解构参数的箭头函数
+        // 需要做完整括号匹配扫描，否则会跟括号包装的对象字面量混淆
+        if (peeked.getType() == TokenType.LBRACE || peeked.getType() == TokenType.LBRACKET) {
+            return scanForArrowAfterParen();
+        }
         return false;
+    }
+
+    /** 扫描当前 LPAREN 匹配到的 RPAREN，判断其后是否紧跟 FAT_ARROW。扫描过的 token 回放到缓冲队列。 */
+    private boolean scanForArrowAfterParen() throws CompileException {
+        java.util.List<Token> scanned = new java.util.ArrayList<>();
+        Token savedCurrent = current;
+        // 消费 LPAREN
+        scanned.add(current);
+        current = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
+        int depth = 1;
+        while (depth > 0 && current.getType() != TokenType.EOF) {
+            TokenType t = current.getType();
+            if (t == TokenType.LPAREN || t == TokenType.LBRACE || t == TokenType.LBRACKET) depth++;
+            else if (t == TokenType.RPAREN || t == TokenType.RBRACE || t == TokenType.RBRACKET) depth--;
+            scanned.add(current);
+            if (depth == 0) {
+                current = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
+                break;
+            }
+            current = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
+        }
+        // 跳过 NEWLINE 再看
+        while (current.getType() == TokenType.NEWLINE) {
+            scanned.add(current);
+            current = lookaheadBuffer.isEmpty() ? lexer.nextToken() : lookaheadBuffer.pollFirst();
+        }
+        boolean isArrow = current.getType() == TokenType.FAT_ARROW;
+        // 回放：把现在的 current 放进 buffer 头部，把 scanned 逆序压入，恢复 savedCurrent
+        lookaheadBuffer.addFirst(current);
+        for (int i = scanned.size() - 1; i >= 0; i--) {
+            lookaheadBuffer.addFirst(scanned.get(i));
+        }
+        // 移除第一个（即 savedCurrent 位置），用 savedCurrent 重置 current
+        lookaheadBuffer.pollFirst();
+        current = savedCurrent;
+        return isArrow;
     }
 
     private ASTNode parseArrowFunction() throws CompileException {

@@ -1897,6 +1897,18 @@ public class Interpreter {
                             int index = (int) idx.numberValue();
                             List<IValue<?>> list = lv.jvmValue();
                             registers[inst.dst] = (index >= 0 && index < list.size()) ? list.get(index) : NoneValue.NONE;
+                        } else if (obj instanceof MapValue mv) {
+                            IValue<?> val = mv.jvmValue().get(idx);
+                            if (val == null) {
+                                val = mv.jvmValue().get(new StringValue(idx.stringValue()));
+                            }
+                            registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                        } else if (obj instanceof StringValue sv) {
+                            int index = (int) idx.numberValue();
+                            String s = sv.stringValue();
+                            registers[inst.dst] = (index >= 0 && index < s.length())
+                                    ? new StringValue(String.valueOf(s.charAt(index)))
+                                    : NoneValue.NONE;
                         } else if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof RangeObject range) {
                             double val = range.getStart() + idx.numberValue() * range.getStep();
                             if (range.getStep() > 0 ? val < range.getEnd() : val > range.getEnd()) {
@@ -1905,6 +1917,9 @@ public class Interpreter {
                             } else {
                                 registers[inst.dst] = NoneValue.NONE;
                             }
+                        } else if (obj instanceof ObjectValue<?> ov) {
+                            Variable elem = ov.jvmValue().getElement(idx.stringValue());
+                            registers[inst.dst] = elem != null ? elem.ariaValue() : NoneValue.NONE;
                         } else {
                             registers[inst.dst] = NoneValue.NONE;
                         }

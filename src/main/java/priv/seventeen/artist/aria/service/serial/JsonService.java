@@ -32,6 +32,8 @@ public class JsonService {
     public static void register(CallableManager manager) {
         manager.registerStaticFunction("json", "parse", JsonService::parse);
         manager.registerStaticFunction("json", "stringify", JsonService::stringify);
+        manager.registerStaticFunction("JSON", "parse", JsonService::parse);
+        manager.registerStaticFunction("JSON", "stringify", JsonService::stringify);
     }
 
     public static IValue<?> parse(InvocationData data) throws AriaException {
