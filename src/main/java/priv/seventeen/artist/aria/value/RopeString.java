@@ -16,81 +16,61 @@
 
 package priv.seventeen.artist.aria.value;
 
-import java.util.ArrayList;
-
-
+/**
+ * 不可变 rope 字符串：内部为二叉树（leaf 持有 flat 字符串，internal 持有 left/right 子树）。
+ * concat 是 O(1)（不复制内容），首次 stringValue() 时才 flatten 成扁平 String 并缓存，
+ * 后续访问 O(1)。
+ *
+ * 旧实现使用 ArrayList&lt;String&gt;，每次 concat 都复制片段列表，长链拼接退化为 O(N²) 内存操作。
+ */
 public final class RopeString extends IValue<String> {
 
-
-    private ArrayList<String> segments;
-
-    private int length;
-
+    // leaf：flat != null
+    // internal：left != null && right != null
     private String flat;
+    private RopeString left;
+    private RopeString right;
+
+    private final int length;
 
 
     public RopeString(String s) {
-        this.flat = s;
-        this.length = s.length();
-        this.segments = null;
+        this.flat = s == null ? "" : s;
+        this.length = this.flat.length();
     }
 
-
-    private RopeString(ArrayList<String> segments, int length) {
-        this.segments = segments;
-        this.length = length;
-        this.flat = null;
+    private RopeString(RopeString left, RopeString right) {
+        this.left = left;
+        this.right = right;
+        this.length = left.length + right.length;
     }
 
 
         public static RopeString concat(RopeString a, RopeString b) {
-        ArrayList<String> segs = new ArrayList<>();
-        a.collectSegments(segs);
-        b.collectSegments(segs);
-        return new RopeString(segs, a.length + b.length);
+        return new RopeString(a, b);
     }
 
         public static RopeString concat(RopeString a, String b) {
-        ArrayList<String> segs = new ArrayList<>();
-        a.collectSegments(segs);
-        segs.add(b);
-        return new RopeString(segs, a.length + b.length());
+        return new RopeString(a, new RopeString(b));
     }
 
-        public void append(String s) {
-        if (segments == null) {
-            segments = new ArrayList<>();
-            if (flat != null) segments.add(flat);
-        } else {
-        }
-        segments.add(s);
-        length += s.length();
-        flat = null;
-    }
-
-    private void collectSegments(ArrayList<String> target) {
+    private void appendTo(StringBuilder sb) {
         if (flat != null) {
-            target.add(flat);
-        } else if (segments != null) {
-            target.addAll(segments);
+            sb.append(flat);
+        } else {
+            left.appendTo(sb);
+            right.appendTo(sb);
         }
     }
 
         private String flatten() {
         if (flat != null) return flat;
-        if (segments == null || segments.isEmpty()) {
-            flat = "";
-            return flat;
-        }
-        if (segments.size() == 1) {
-            flat = segments.get(0);
-        } else {
-            StringBuilder sb = new StringBuilder(length);
-            for (String s : segments) sb.append(s);
-            flat = sb.toString();
-        }
-        // 释放片段列表，帮助 GC
-        segments = null;
+        StringBuilder sb = new StringBuilder(length);
+        appendTo(sb);
+        flat = sb.toString();
+        // 释放子树，帮助 GC，并使后续访问走 leaf 快速路径
+        left = null;
+        right = null;
         return flat;
     }
 

@@ -1246,11 +1246,15 @@ public class Interpreter {
                         // CONCAT: dst=结果, a=baseReg, b=count
                         int baseReg = inst.a;
                         int count = inst.b;
-                        StringBuilder sb = new StringBuilder();
+                        // 预算总长度，一次性分配 StringBuilder 容量
+                        int totalLen = 0;
+                        for (int i = 0; i < count; i++) totalLen += registers[baseReg + i].stringValue().length();
+                        StringBuilder sb = new StringBuilder(totalLen);
                         for (int i = 0; i < count; i++) {
                             sb.append(registers[baseReg + i].stringValue());
                         }
-                        registers[inst.dst] = new StringValue(sb.toString());
+                        // concat 路径：跳过 Double.parseDouble 探测
+                        registers[inst.dst] = new StringValue(sb.toString(), true);
                         break;
                     }
 
