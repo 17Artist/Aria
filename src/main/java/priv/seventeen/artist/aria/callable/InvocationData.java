@@ -48,6 +48,23 @@ public class InvocationData {
         this.regCount = count;
     }
 
+    /** 透传构造：复用 source 的参数存储（避免 args 数组拷贝），仅替换 context/target。 */
+    public InvocationData(Context context, Object target, InvocationData source) {
+        this.context = context;
+        this.target = target;
+        if (source.args != null) {
+            this.args = source.args;
+            this.regs = null;
+            this.regBase = 0;
+            this.regCount = 0;
+        } else {
+            this.args = null;
+            this.regs = source.regs;
+            this.regBase = source.regBase;
+            this.regCount = source.regCount;
+        }
+    }
+
     public Context getContext() { return context; }
     public Object getTarget() { return target; }
     public IValue<?>[] getArgs() {

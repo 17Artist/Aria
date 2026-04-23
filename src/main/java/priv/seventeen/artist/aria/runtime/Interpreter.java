@@ -1121,7 +1121,8 @@ public class Interpreter {
                             final ICallable compiled = subProg.getCompiledCode();
                             registers[inst.dst] = new FunctionValue(data -> {
                                 Context ctx = data.getContext() != null ? data.getContext() : capturedCtx;
-                                return compiled.invoke(new InvocationData(ctx, null, data.getArgs()));
+                                // 透传：避免 data.getArgs() 数组拷贝
+                                return compiled.invoke(new InvocationData(ctx, null, data));
                             });
                         } else {
                             // 尝试快速 lambda（纳秒级，无需 JIT）
@@ -2023,7 +2024,7 @@ public class Interpreter {
                             registers[inst.dst] = new FunctionValue(data -> {
                                 Context cc = capturedCtx.createCallContext(
                                     data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE, data.getArgs());
-                                return compiled.invoke(new InvocationData(cc, null, data.getArgs()));
+                                return compiled.invoke(new InvocationData(cc, null, data));
                             });
                         } else {
                             ICallable fastLambda = tryCreateFastLambda(subProg);
