@@ -92,4 +92,23 @@ public class JavaNativeBenchmark {
         }
         return c;
     }
+
+    @Benchmark
+    public double fibonacci25() {
+        return fib(25);
+    }
+
+    private static double fib(double n) {
+        if (n <= 1) return n;
+        return fib(n - 1) + fib(n - 2);
+    }
+
+    @Benchmark
+    public int functionCall100K() {
+        int x = 0;
+        for (int i = 0; i < 100_000; i++) x = inc(x);
+        return x;
+    }
+
+    private static int inc(int v) { return v + 1; }
 }

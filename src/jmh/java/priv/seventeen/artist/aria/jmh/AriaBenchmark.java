@@ -45,6 +45,8 @@ public class AriaBenchmark {
     private AriaCompiledRoutine floatArith;
     private AriaCompiledRoutine objectOps;
     private AriaCompiledRoutine branchHeavy;
+    private AriaCompiledRoutine fib;
+    private AriaCompiledRoutine fnCall;
 
     @Setup(Level.Trial)
     public void setup() throws Exception {
@@ -104,6 +106,23 @@ public class AriaBenchmark {
                 }
                 return var.count
                 """);
+
+        fib = Aria.compile("fib", """
+                var.fib = -> {
+                    if (args[0] <= 1) { return args[0] }
+                    return fib(args[0] - 1) + fib(args[0] - 2)
+                }
+                return fib(25)
+                """);
+
+        fnCall = Aria.compile("fncall", """
+                var.inc = -> { return args[0] + 1 }
+                var.x = 0
+                for (var.i = 0; var.i < 100000; var.i += 1) {
+                    var.x = inc(var.x)
+                }
+                return var.x
+                """);
     }
 
     @Benchmark
@@ -145,6 +164,20 @@ public class AriaBenchmark {
     public void branchIntensive100K(Blackhole bh) throws Exception {
         Context ctx = Aria.createContext();
         IValue<?> r = branchHeavy.execute(ctx);
+        bh.consume(r);
+    }
+
+    @Benchmark
+    public void fibonacci25(Blackhole bh) throws Exception {
+        Context ctx = Aria.createContext();
+        IValue<?> r = fib.execute(ctx);
+        bh.consume(r);
+    }
+
+    @Benchmark
+    public void functionCall100K(Blackhole bh) throws Exception {
+        Context ctx = Aria.createContext();
+        IValue<?> r = fnCall.execute(ctx);
         bh.consume(r);
     }
 }

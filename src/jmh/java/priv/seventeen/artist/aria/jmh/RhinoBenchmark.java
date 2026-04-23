@@ -22,7 +22,7 @@ import static priv.seventeen.artist.aria.jmh.BenchmarkScripts.*;
 @Fork(value = 1, warmups = 0)
 public class RhinoBenchmark {
 
-    private Script loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy;
+    private Script loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy, fib, fnCall;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -35,6 +35,8 @@ public class RhinoBenchmark {
             arrayOps     = cx.compileString(ARRAY_OPS_10K,        "array",  1, null);
             objectOps    = cx.compileString(OBJECT_OPS_10K,       "obj",    1, null);
             branchHeavy  = cx.compileString(BRANCH_INTENSIVE_100K,"branch", 1, null);
+            fib          = cx.compileString(FIBONACCI_25,         "fib",    1, null);
+            fnCall       = cx.compileString(FUNCTION_CALL_100K,   "fncall", 1, null);
         } finally {
             Context.exit();
         }
@@ -57,4 +59,6 @@ public class RhinoBenchmark {
     @Benchmark public void arrayOps10K        (Blackhole bh) { bh.consume(run(arrayOps));     }
     @Benchmark public void objectOps10K       (Blackhole bh) { bh.consume(run(objectOps));    }
     @Benchmark public void branchIntensive100K(Blackhole bh) { bh.consume(run(branchHeavy));  }
+    @Benchmark public void fibonacci25        (Blackhole bh) { bh.consume(run(fib));          }
+    @Benchmark public void functionCall100K   (Blackhole bh) { bh.consume(run(fnCall));       }
 }

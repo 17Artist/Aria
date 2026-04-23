@@ -24,7 +24,7 @@ import static priv.seventeen.artist.aria.jmh.BenchmarkScripts.*;
 @Fork(value = 1, warmups = 0)
 public class NashornBenchmark {
 
-    private CompiledScript loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy;
+    private CompiledScript loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy, fib, fnCall;
 
     @Setup(Level.Trial)
     public void setup() throws ScriptException {
@@ -36,6 +36,8 @@ public class NashornBenchmark {
         arrayOps     = c.compile(ARRAY_OPS_10K);
         objectOps    = c.compile(OBJECT_OPS_10K);
         branchHeavy  = c.compile(BRANCH_INTENSIVE_100K);
+        fib          = c.compile(FIBONACCI_25);
+        fnCall       = c.compile(FUNCTION_CALL_100K);
     }
 
     @Benchmark public void loopArithmetic1M   (Blackhole bh) throws ScriptException { bh.consume(loopArith.eval());    }
@@ -44,4 +46,6 @@ public class NashornBenchmark {
     @Benchmark public void arrayOps10K        (Blackhole bh) throws ScriptException { bh.consume(arrayOps.eval());     }
     @Benchmark public void objectOps10K       (Blackhole bh) throws ScriptException { bh.consume(objectOps.eval());    }
     @Benchmark public void branchIntensive100K(Blackhole bh) throws ScriptException { bh.consume(branchHeavy.eval());  }
+    @Benchmark public void fibonacci25        (Blackhole bh) throws ScriptException { bh.consume(fib.eval());          }
+    @Benchmark public void functionCall100K   (Blackhole bh) throws ScriptException { bh.consume(fnCall.eval());       }
 }

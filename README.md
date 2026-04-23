@@ -99,31 +99,29 @@ console.log(dog.speak());
 
 JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。单位 ms/op，数字越小越好。
 
-| 工作负载                  | Aria   | Rhino  | Nashorn | Groovy | GraalJS | Java 原生 |
-|-----------------------|--------|--------|---------|--------|---------|---------|
-| Loop Arithmetic 1M    | 0.235  | 26.33  | 14.89   | 12.58  | 81.43   | 0.234   |
-| Float Arithmetic 1M   | 1.93   | 27.83  | 14.56   | 5.37   | 89.95   | 0.95    |
-| String Concat 100K    | 0.84   | 2.92   | 2.01    | 1.11   | 8.74    | 0.084   |
-| Array/List Ops 10K    | 0.125  | 0.394  | 0.161   | 0.075  | 1.38    | 0.048   |
-| Object/Map Ops 10K    | 0.345  | 1.52   | 0.271   | 0.695  | 1.74    | 0.302   |
-| Branch Intensive 100K | 0.086  | 9.25   | 6.02    | 4.27   | 10.66   | 0.063   |
+| 工作负载                  | Aria    | Rhino | Nashorn | Groovy | GraalJS | Java 原生 |
+|-----------------------|---------|-------|---------|--------|---------|---------|
+| Loop Arithmetic 1M    | 0.236   | 25.23 | 14.30   | 5.14   | 94.05   | 0.233   |
+| Float Arithmetic 1M   | 1.93    | 26.13 | 14.02   | 5.54   | 85.49   | 0.94    |
+| String Concat 100K    | 0.84    | 2.74  | 1.86    | 1.02   | 8.25    | 0.112   |
+| Array/List Ops 10K    | 0.146   | 0.373 | 0.150   | 0.070  | 1.30    | 0.049   |
+| Object/Map Ops 10K    | 0.356   | 1.44  | 0.261   | 0.677  | 1.69    | 0.303   |
+| Branch Intensive 100K | 0.085   | 8.85  | 6.30    | 3.65   | 11.39   | 0.064   |
+| Fibonacci(25)         | ~0.0001 | 2.03  | 0.683   | 3.71   | 14.29   | 0.187   |
+| Function Call 100K    | 0.002   | 3.04  | 1.42    | 1.72   | 11.31   | ~1e-7   |
 
 说明：
 
-- 和同类 JS/Groovy 引擎相比，Aria 在多数工作负载上快一个数量级左右，主要得益于 ASM JIT 将热点数值代码直接编译为 JVM 字节码
+- 和同类脚本引擎相比，Aria 在多数工作负载上快一个数量级左右，主要得益于 ASM JIT 将热点数值代码直接编译为 JVM 字节码
 - 和 Java 原生相比，Aria 在纯数值循环上接近但仍有 1.3-2× 的差距，容器/字符串操作因 IValue 包装开销慢 1.4-10×，这是脚本语言抽象层的必然代价
 - GraalJS 在 OpenJDK 17 上以解释模式运行（缺 GraalVM Compiler runtime），用 GraalVM JDK 跑能显著提速
 - Float Arithmetic 的 Java 原生数据采用 `double` 循环变量版本，与 Aria 的"全 double"语义对等；若用 `int` 循环变量（Java 惯用写法），Java 会在 `1.0/i` 处每次触发 i2d 转换，测得 2.82 ms
 
-Fibonacci / Function Call 这类工作负载在 JMH 充分预热下会被 C2 跨层折叠，数据不具参考意义。这两项改用 `SimpleBenchmark`（nanoTime + 输入轮换）测量，但由于 Aria 测得的数据偏低（估计 C2 仍做了部分折叠），没有直接列入上表。读者可自行跑 `./gradlew :test --tests "*.SimpleBenchmark" --info` 查看。
+关于 Fibonacci / Function Call 两行：Aria 的 ASM JIT 生成的是 JVM 原生字节码，JMH 充分预热后 C2 能穿透到 Aria 的 JIT 层继续做内联与常量折叠，结果被折叠到几乎测不出（Aria ~0.0001 ms / Java ~1e-7 ms）。其他脚本引擎的 eval 路径是 C2 看不穿的黑盒，所以那几列的数据是真实的解释/内部 JIT 开销。**这两行 Aria 的数据不应直接解读为"Aria 在这两个场景下接近零开销"**，它只是说明 Aria 的 JIT 产物对 JVM 足够透明；实际业务中入参和上下文会变化，C2 的跨层折叠不会发生。
 
 跑法：
 ```bash
-# 6 项 JMH（包含所有对照引擎）
 ./gradlew jmh -Pjmh.includes=".*Benchmark.*"
-
-# Fibonacci + Function Call 多引擎对比
-./gradlew :test --tests "*.SimpleBenchmark" --info
 ```
 
 

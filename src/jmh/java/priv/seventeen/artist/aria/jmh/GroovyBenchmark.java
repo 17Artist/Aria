@@ -22,7 +22,7 @@ import static priv.seventeen.artist.aria.jmh.BenchmarkScripts.*;
 public class GroovyBenchmark {
 
     private GroovyShell shell;
-    private Script loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy;
+    private Script loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy, fib, fnCall;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -33,6 +33,8 @@ public class GroovyBenchmark {
         arrayOps     = shell.parse(GROOVY_ARRAY_OPS_10K);
         objectOps    = shell.parse(GROOVY_OBJECT_OPS_10K);
         branchHeavy  = shell.parse(GROOVY_BRANCH_INTENSIVE_100K);
+        fib          = shell.parse(GROOVY_FIBONACCI_25);
+        fnCall       = shell.parse(GROOVY_FUNCTION_CALL_100K);
     }
 
     @Benchmark public void loopArithmetic1M   (Blackhole bh) { bh.consume(loopArith.run());    }
@@ -41,4 +43,6 @@ public class GroovyBenchmark {
     @Benchmark public void arrayOps10K        (Blackhole bh) { bh.consume(arrayOps.run());     }
     @Benchmark public void objectOps10K       (Blackhole bh) { bh.consume(objectOps.run());    }
     @Benchmark public void branchIntensive100K(Blackhole bh) { bh.consume(branchHeavy.run());  }
+    @Benchmark public void fibonacci25        (Blackhole bh) { bh.consume(fib.run());          }
+    @Benchmark public void functionCall100K   (Blackhole bh) { bh.consume(fnCall.run());       }
 }

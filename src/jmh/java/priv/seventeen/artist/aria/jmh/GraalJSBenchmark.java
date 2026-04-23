@@ -23,7 +23,7 @@ import static priv.seventeen.artist.aria.jmh.BenchmarkScripts.*;
 public class GraalJSBenchmark {
 
     private Context ctx;
-    private Source loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy;
+    private Source loopArith, floatArith, stringConcat, arrayOps, objectOps, branchHeavy, fib, fnCall;
 
     @Setup(Level.Trial)
     public void setup() {
@@ -37,6 +37,8 @@ public class GraalJSBenchmark {
         arrayOps     = Source.create("js", ARRAY_OPS_10K);
         objectOps    = Source.create("js", OBJECT_OPS_10K);
         branchHeavy  = Source.create("js", BRANCH_INTENSIVE_100K);
+        fib          = Source.create("js", FIBONACCI_25);
+        fnCall       = Source.create("js", FUNCTION_CALL_100K);
     }
 
     @TearDown(Level.Trial)
@@ -48,4 +50,6 @@ public class GraalJSBenchmark {
     @Benchmark public void arrayOps10K        (Blackhole bh) { Value v = ctx.eval(arrayOps);     bh.consume(v); }
     @Benchmark public void objectOps10K       (Blackhole bh) { Value v = ctx.eval(objectOps);    bh.consume(v); }
     @Benchmark public void branchIntensive100K(Blackhole bh) { Value v = ctx.eval(branchHeavy);  bh.consume(v); }
+    @Benchmark public void fibonacci25        (Blackhole bh) { Value v = ctx.eval(fib);          bh.consume(v); }
+    @Benchmark public void functionCall100K   (Blackhole bh) { Value v = ctx.eval(fnCall);       bh.consume(v); }
 }
