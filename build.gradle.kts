@@ -29,6 +29,20 @@ dependencies {
 
     jmh("org.openjdk.jmh:jmh-core:1.37")
     jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")
+
+    // Benchmark 对照引擎（仅用于 jmh classpath）
+    jmh("org.mozilla:rhino:1.7.15")
+    jmh("org.openjdk.nashorn:nashorn-core:15.4")
+    jmh("org.graalvm.js:js:22.3.5")
+    jmh("org.graalvm.js:js-scriptengine:22.3.5")
+    jmh("org.apache.groovy:groovy:4.0.21")
+
+    // 同样的对照引擎，给 SimpleBenchmark（test classpath）使用
+    testImplementation("org.mozilla:rhino:1.7.15")
+    testImplementation("org.openjdk.nashorn:nashorn-core:15.4")
+    testImplementation("org.graalvm.js:js:22.3.5")
+    testImplementation("org.graalvm.js:js-scriptengine:22.3.5")
+    testImplementation("org.apache.groovy:groovy:4.0.21")
 }
 
 tasks.withType<JavaCompile> {
