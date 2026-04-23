@@ -11,9 +11,9 @@ Aria 是基于作者早年作品 Shimmer 的续作，语法理念和运行时结
 ## 特点
 
 - 自有 KISS 语法与 JS 兼容模式共享同一套 IR/VM/JIT 管线
-- ASM JIT 运行时热点优化
+- ASM JIT 运行时热点优化（数值函数特化、寄存器分配、自递归 callFast 直跳）
 - 标准 Java 17 运行，无额外依赖，毫秒级启动
-- JS 兼容模式支持大部分 ES5.1 语法及 ES6 常用特性
+- JS 兼容模式覆盖 ES5.1 + ES6 常用特性：模板字符串、箭头函数、class（含 `static` 与 `super`）、解构（含函数参数）、spread、`for-of`、`?.` `??`、ASI 续行、await/Promise
 - 五种命名空间变量系统（var/val/global/server/client）
 - 适用于嵌入式脚本、游戏逻辑、配置热更新
 
@@ -97,20 +97,34 @@ console.log(dog.speak());
 
 ## 性能
 
-IsolatedBenchmark 独立测试，预热 15 轮取 5 轮均值（单位 ms，越小越好）：
+JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。单位 ms/op，数字越小越好。
 
-| 基准测试                  | Aria    | Rhino   | Nashorn | Groovy   | GraalJS  | Java 原生 |
-|-----------------------|---------|---------|---------|----------|----------|---------|
-| Fibonacci(25)         | 9.7 ms  | 22.0 ms | 2.1 ms  | 196.9 ms | 39.0 ms  | 0.26 ms |
-| Loop Arithmetic 1M    | 0.32 ms | 30.7 ms | 10.5 ms | 7.4 ms   | 369.7 ms | 0.23 ms |
-| String Concat 100K    | 2.1 ms  | 3.1 ms  | 1.6 ms  | 0.31 ms  | 33.5 ms  | 0.68 ms |
-| Array/List Ops 10K    | 0.47 ms | 0.73 ms | 1.1 ms  | 3.0 ms   | 4.7 ms   | 0.46 ms |
-| Float Arithmetic 1M   | 3.3 ms  | 32.2 ms | 15.9 ms | 14500 ms | 376.6 ms | 2.5 ms  |
-| Object/Map Ops 10K    | 2.5 ms  | 1.8 ms  | 5.1 ms  | 3.2 ms   | 11.4 ms  | 2.5 ms  |
-| Function Call 100K    | 0.17 ms | 3.5 ms  | 1.1 ms  | 106.7 ms | 48.0 ms  | ~0 ms   |
-| Branch Intensive 100K | 0.31 ms | 12.7 ms | 7.7 ms  | 1.6 ms   | 52.6 ms  | 0.16 ms |
+| 工作负载                  | Aria   | Rhino  | Nashorn | Groovy | GraalJS | Java 原生 |
+|-----------------------|--------|--------|---------|--------|---------|---------|
+| Loop Arithmetic 1M    | 0.235  | 26.33  | 14.89   | 12.58  | 81.43   | 0.234   |
+| Float Arithmetic 1M   | 1.93   | 27.83  | 14.56   | 5.37   | 89.95   | 0.95    |
+| String Concat 100K    | 0.84   | 2.92   | 2.01    | 1.11   | 8.74    | 0.084   |
+| Array/List Ops 10K    | 0.125  | 0.394  | 0.161   | 0.075  | 1.38    | 0.048   |
+| Object/Map Ops 10K    | 0.345  | 1.52   | 0.271   | 0.695  | 1.74    | 0.302   |
+| Branch Intensive 100K | 0.086  | 9.25   | 6.02    | 4.27   | 10.66   | 0.063   |
 
-- 注：以上数据中GraalJS为JVM中运行（解释模式）
+说明：
+
+- 和同类 JS/Groovy 引擎相比，Aria 在多数工作负载上快一个数量级左右，主要得益于 ASM JIT 将热点数值代码直接编译为 JVM 字节码
+- 和 Java 原生相比，Aria 在纯数值循环上接近但仍有 1.3-2× 的差距，容器/字符串操作因 IValue 包装开销慢 1.4-10×，这是脚本语言抽象层的必然代价
+- GraalJS 在 OpenJDK 17 上以解释模式运行（缺 GraalVM Compiler runtime），用 GraalVM JDK 跑能显著提速
+- Float Arithmetic 的 Java 原生数据采用 `double` 循环变量版本，与 Aria 的"全 double"语义对等；若用 `int` 循环变量（Java 惯用写法），Java 会在 `1.0/i` 处每次触发 i2d 转换，测得 2.82 ms
+
+Fibonacci / Function Call 这类工作负载在 JMH 充分预热下会被 C2 跨层折叠，数据不具参考意义。这两项改用 `SimpleBenchmark`（nanoTime + 输入轮换）测量，但由于 Aria 测得的数据偏低（估计 C2 仍做了部分折叠），没有直接列入上表。读者可自行跑 `./gradlew :test --tests "*.SimpleBenchmark" --info` 查看。
+
+跑法：
+```bash
+# 6 项 JMH（包含所有对照引擎）
+./gradlew jmh -Pjmh.includes=".*Benchmark.*"
+
+# Fibonacci + Function Call 多引擎对比
+./gradlew :test --tests "*.SimpleBenchmark" --info
+```
 
 
 ## 架构
