@@ -79,6 +79,10 @@ public class JITCompiler {
         IRInstruction[] code = program.getInstructions();
         if (code == null || code.length == 0) return false;
 
+        // 仅当函数本身全数值时，才允许 CALL_STATIC 自递归（fastDoubleRecursion 路径专用）。
+        // 非数值路径的 CALL_STATIC 自递归走 rtCallByName 兜底，与解释器结果不一致，先禁用。
+        boolean numericForCallStaticSelfRec = isNumericOnly(code);
+
         for (IRInstruction inst : code) {
             switch (inst.opcode) {
                 // 支持的指令
@@ -121,6 +125,9 @@ public class JITCompiler {
                 case CALL_STATIC:
                     if (isSupportedStaticCall(inst)) break;
                     if (inst.name != null && inst.name.contains(".")) break;
+                    // 自递归：CALL_STATIC 名字与本 program 名字一致（编译器在 var.fn = -> 时把 fn 名传给 subProg）
+                    // 仅在 numericOnly 路径下允许（走 fastDoubleRecursion，emit INVOKESTATIC callFast）
+                    if (inst.name != null && inst.name.equals(program.getName()) && numericForCallStaticSelfRec) break;
                     if (inst.name != null) {
                         boolean canInline = false;
                         for (int j = 0; j < code.length - 1; j++) {
@@ -363,8 +370,16 @@ public class JITCompiler {
         clazz.getField("KEYS").set(null, keys);
         clazz.getField("SUB_PROGRAMS").set(null, subPrograms);
         if (argCount == 1 && fastDoubleRecursion) {
-            clazz.getField("MEMO").set(null, new double[1024]);
-            clazz.getField("MEMO_SET").set(null, new boolean[1024]);
+            java.lang.reflect.Field memoField = clazz.getDeclaredField("MEMO");
+            java.lang.reflect.Field memoSetField = clazz.getDeclaredField("MEMO_SET");
+            memoField.setAccessible(true);
+            memoSetField.setAccessible(true);
+            memoField.set(null, new double[1024]);
+            memoSetField.set(null, new boolean[1024]);
+        }
+        // 标记纯数值 JIT 路径不依赖 Context — NEW_FUNCTION 包装可省一层 lambda + InvocationData
+        if (fastDoubleRecursion || fastDoubleVars || fastLongVars) {
+            program.setJitContextFree(true);
         }
         // 8. 实例化为 ICallable
         return (ICallable) clazz.getDeclaredConstructor().newInstance();
@@ -390,6 +405,7 @@ public class JITCompiler {
         }
         if (!isFunction) return result;
 
+        String selfName = program.getName();
         Map<Integer, Integer> loadVarRegs = new HashMap<>();
         for (int pc = 0; pc < code.length; pc++) {
             IRInstruction inst = code[pc];
@@ -401,6 +417,10 @@ public class JITCompiler {
                 if (keyIdx != null) {
                     result.add(pc);
                 }
+            }
+            // CALL_STATIC name=<self> 也是自递归 — 编译器把 var.fib = -> 时 fib 的名字传给了 subProg.name
+            if (inst.opcode == IROpCode.CALL_STATIC && selfName != null && selfName.equals(inst.name)) {
+                result.add(pc);
             }
         }
         return result;
@@ -686,15 +706,20 @@ public class JITCompiler {
                     mv.visitVarInsn(DLOAD, fastRegToLocal[inst.a]);
                     mv.visitVarInsn(DLOAD, fastRegToLocal[inst.b]);
                     mv.visitInsn(DSUB);
-                    // 窥孔：SUB→CALL 融合
-                    if (pc + 1 < code.length && code[pc + 1].opcode == IROpCode.CALL
-                            && selfRecursivePCs.contains(pc + 1)
-                            && code[pc + 1].b == 1 && code[pc + 1].c == inst.dst) {
-                        for (int i = 1; i < argCount; i++) mv.visitInsn(DCONST_0);
-                        mv.visitMethodInsn(INVOKESTATIC, className, "callFast", fastDesc, false);
-                        mv.visitVarInsn(DSTORE, fastRegToLocal[code[pc + 1].dst]);
-                        pc++;
-                    } else {
+                    // 窥孔：SUB→CALL 融合（仅 CALL 形式；CALL_STATIC 形式由非融合路径处理以确保正确性）
+                    boolean fusedSub = false;
+                    if (pc + 1 < code.length) {
+                        IRInstruction nx = code[pc + 1];
+                        if (nx.opcode == IROpCode.CALL && selfRecursivePCs.contains(pc + 1)
+                                && nx.b == 1 && nx.c == inst.dst) {
+                            for (int i = 1; i < argCount; i++) mv.visitInsn(DCONST_0);
+                            mv.visitMethodInsn(INVOKESTATIC, className, "callFast", fastDesc, false);
+                            mv.visitVarInsn(DSTORE, fastRegToLocal[nx.dst]);
+                            pc++;
+                            fusedSub = true;
+                        }
+                    }
+                    if (!fusedSub) {
                         mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
                     }
                 }
@@ -774,7 +799,26 @@ public class JITCompiler {
                     }
                 }
                 case CALL_STATIC -> {
-                    emitFastStaticCall(mv, fastRegToLocal, inst, Collections.emptyMap());
+                    if (selfRecursivePCs.contains(pc)) {
+                        // CALL_STATIC 自递归：a=argBase, b=argCount，调用方保证寄存器都是 double 局部
+                        int callArgBase = inst.a;
+                        int callArgCount = inst.b;
+                        for (int i = 0; i < callArgCount; i++) {
+                            int r = callArgBase + i;
+                            if (fastRegToLocal[r] >= 0) {
+                                mv.visitVarInsn(DLOAD, fastRegToLocal[r]);
+                            } else {
+                                mv.visitInsn(DCONST_0);
+                            }
+                        }
+                        for (int i = callArgCount; i < argCount; i++) {
+                            mv.visitInsn(DCONST_0);
+                        }
+                        mv.visitMethodInsn(INVOKESTATIC, className, "callFast", fastDesc, false);
+                        mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
+                    } else {
+                        emitFastStaticCall(mv, fastRegToLocal, inst, Collections.emptyMap());
+                    }
                 }
 
                 case MOVE -> {

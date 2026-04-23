@@ -437,6 +437,10 @@ public class Compiler {
                 && "var".equals(((IdentifierExpr) dot.getObject()).getName())
                 && expr.getValue() instanceof LambdaExpr) {
             knownVarFunctions.add(dot.getProperty());
+            // 把变量名传给 lambda 的 subProgram，便于 JIT 识别 CALL_STATIC 形式的自递归
+            if (!subPrograms.isEmpty()) {
+                subPrograms.get(subPrograms.size() - 1).setName(dot.getProperty());
+            }
         }
         emitStore(target, valueReg, expr.getLocation());
         // 返回 valueReg 作为表达式结果，避免多余 MOVE

@@ -1119,11 +1119,16 @@ public class Interpreter {
                         final Context capturedCtx = context.snapshotForClosure();
                         if (subProg.isCompiled()) {
                             final ICallable compiled = subProg.getCompiledCode();
-                            registers[inst.dst] = new FunctionValue(data -> {
-                                Context ctx = data.getContext() != null ? data.getContext() : capturedCtx;
-                                // 透传：避免 data.getArgs() 数组拷贝
-                                return compiled.invoke(new InvocationData(ctx, null, data));
-                            });
+                            if (subProg.isJitContextFree()) {
+                                // 纯数值 JIT 路径：直接复用 compiled，省一层 lambda + InvocationData
+                                registers[inst.dst] = new FunctionValue(compiled);
+                            } else {
+                                registers[inst.dst] = new FunctionValue(data -> {
+                                    Context ctx = data.getContext() != null ? data.getContext() : capturedCtx;
+                                    // 透传：避免 data.getArgs() 数组拷贝
+                                    return compiled.invoke(new InvocationData(ctx, null, data));
+                                });
+                            }
                         } else {
                             // 尝试快速 lambda（纳秒级，无需 JIT）
                             ICallable fastLambda = tryCreateFastLambda(subProg);
@@ -2021,11 +2026,15 @@ public class Interpreter {
                         final Context capturedCtx = context.snapshotForClosure();
                         if (subProg.isCompiled()) {
                             final ICallable compiled = subProg.getCompiledCode();
-                            registers[inst.dst] = new FunctionValue(data -> {
-                                Context cc = capturedCtx.createCallContext(
-                                    data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE, data.getArgs());
-                                return compiled.invoke(new InvocationData(cc, null, data));
-                            });
+                            if (subProg.isJitContextFree()) {
+                                registers[inst.dst] = new FunctionValue(compiled);
+                            } else {
+                                registers[inst.dst] = new FunctionValue(data -> {
+                                    Context cc = capturedCtx.createCallContext(
+                                        data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE, data.getArgs());
+                                    return compiled.invoke(new InvocationData(cc, null, data));
+                                });
+                            }
                         } else {
                             ICallable fastLambda = tryCreateFastLambda(subProg);
                             if (fastLambda != null) {

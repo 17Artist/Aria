@@ -33,6 +33,9 @@ public class IRProgram {
     private volatile int executionCount;
     private volatile ICallable compiledCode;  // JIT 编译后的原生代码
     private volatile boolean jitScheduled;    // 是否已提交异步 JIT 编译
+    // JIT 编译产物是否完全不依赖 Context（如 fastDoubleRecursion / fastDoubleVars 数值路径）
+    // 为 true 时调用方可直接以 compiled 作为 FunctionValue 的 callable，省一层 lambda + InvocationData 包装
+    private volatile boolean jitContextFree;
 
     // 自递归检测缓存：避免每次 executeInlineInternal 入口都遍历 code[]
     private volatile byte selfRecursiveFlag; // 0=未检测, 1=是, -1=否
@@ -68,6 +71,8 @@ public class IRProgram {
     public void setCompiledCode(ICallable code) { this.compiledCode = code; }
     public boolean isJitScheduled() { return jitScheduled; }
     public void setJitScheduled(boolean scheduled) { this.jitScheduled = scheduled; }
+    public boolean isJitContextFree() { return jitContextFree; }
+    public void setJitContextFree(boolean v) { this.jitContextFree = v; }
 
     public byte getSelfRecursiveFlag() { return selfRecursiveFlag; }
     public void setSelfRecursiveFlag(byte flag) { this.selfRecursiveFlag = flag; }
