@@ -57,7 +57,7 @@ public enum TokenType {
     
     IF, ELIF, ELSE, WHILE, FOR, IN, SWITCH, CASE, MATCH,
     BREAK, RETURN, NEXT,
-    ASYNC,
+    ASYNC, AWAIT,
     
     CLASS, EXTENDS, NEW, SUPER,
     TRY, CATCH, FINALLY, THROW,

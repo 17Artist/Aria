@@ -19,7 +19,8 @@ package priv.seventeen.artist.aria.value;
 public sealed abstract class IValue<T> extends IData permits
         NumberValue, BooleanValue, StringValue, NoneValue,
         ListValue, MapValue, ObjectValue, StoreOnlyValue,
-        AriaClassValue, FunctionValue, MutableStringValue, RopeString, SmallMapValue {
+        AriaClassValue, FunctionValue, MutableStringValue, RopeString, SmallMapValue,
+        PromiseValue {
 
     public abstract T jvmValue();
     public abstract double numberValue();

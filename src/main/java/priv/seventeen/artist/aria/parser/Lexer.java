@@ -43,6 +43,7 @@ public class Lexer {
         ARIA_KEYWORDS.put("return",   TokenType.RETURN);
         ARIA_KEYWORDS.put("next",     TokenType.NEXT);
         ARIA_KEYWORDS.put("async",    TokenType.ASYNC);
+        ARIA_KEYWORDS.put("await",    TokenType.AWAIT);
         ARIA_KEYWORDS.put("true",     TokenType.TRUE);
         ARIA_KEYWORDS.put("false",    TokenType.FALSE);
         ARIA_KEYWORDS.put("none",     TokenType.NONE);

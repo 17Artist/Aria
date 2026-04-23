@@ -34,6 +34,8 @@ public class ThreadPoolManager {
         executor.submit(task);
     }
 
+    public ExecutorService executor() { return executor; }
+
     public void shutdown() {
         executor.shutdown();
         try {

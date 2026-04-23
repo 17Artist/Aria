@@ -830,4 +830,77 @@ class JavaScriptModeTest {
             """);
         assertEquals("Rex is an animal (dog)", result.stringValue());
     }
+
+    @Test
+    void testPromiseResolveAwait() throws AriaException {
+        IValue<?> result = evalJS("""
+            let p = Promise.resolve(42);
+            return await p;
+            """);
+        assertEquals(42.0, result.numberValue());
+    }
+
+    @Test
+    void testAwaitNonPromisePassthrough() throws AriaException {
+        // await 非 Promise 值直接返回（JS 语义）
+        IValue<?> result = evalJS("""
+            return await 7;
+            """);
+        assertEquals(7.0, result.numberValue());
+    }
+
+    @Test
+    void testPromiseThen() throws AriaException {
+        IValue<?> result = evalJS("""
+            let p = Promise.resolve(10).then(x => x * 2);
+            return await p;
+            """);
+        assertEquals(20.0, result.numberValue());
+    }
+
+    @Test
+    void testPromiseAll() throws AriaException {
+        IValue<?> result = evalJS("""
+            let a = Promise.resolve(1);
+            let b = Promise.resolve(2);
+            let c = Promise.resolve(3);
+            let results = await Promise.all([a, b, c]);
+            return results[0] + results[1] + results[2];
+            """);
+        assertEquals(6.0, result.numberValue());
+    }
+
+    @Test
+    void testPromiseChain() throws AriaException {
+        IValue<?> result = evalJS("""
+            let p = Promise.resolve(1)
+                .then(x => x + 10)
+                .then(x => x * 2);
+            return await p;
+            """);
+        assertEquals(22.0, result.numberValue());
+    }
+
+    @Test
+    void testAsyncFunctionBodyAwait() throws AriaException {
+        // async function 里用 await — body 同步执行但 await 内部 Promise 有效
+        IValue<?> result = evalJS("""
+            async function f() {
+                let a = await Promise.resolve(10);
+                let b = await Promise.resolve(20);
+                return a + b;
+            }
+            return f();
+            """);
+        assertEquals(30.0, result.numberValue());
+    }
+
+    @Test
+    void testPromiseRejectCatch() throws AriaException {
+        IValue<?> result = evalJS("""
+            let p = Promise.reject('bad').catchErr(err => 'caught: ' + err);
+            return await p;
+            """);
+        assertEquals("caught: bad", result.stringValue());
+    }
 }

@@ -1264,6 +1264,17 @@ public class Interpreter {
                     case ASYNC_BEGIN:
                         asyncStartPC = pc + 1;
                         break;
+                    case AWAIT: {
+                        // AWAIT: dst=结果, a=operandReg。若 operand 是 PromiseValue 则阻塞等待；
+                        // 否则直接透传（与 JS 语义一致，await 非 Promise 直接返回原值）
+                        IValue<?> op = registers[inst.a];
+                        if (op instanceof PromiseValue pv) {
+                            registers[inst.dst] = pv.awaitValue();
+                        } else {
+                            registers[inst.dst] = op != null ? op : NoneValue.NONE;
+                        }
+                        break;
+                    }
                     case ASYNC_END: {
                         if (asyncStartPC >= 0) {
                             final int startPC = asyncStartPC;

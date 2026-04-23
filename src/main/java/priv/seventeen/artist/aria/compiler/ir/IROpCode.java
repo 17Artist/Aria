@@ -64,7 +64,7 @@ public enum IROpCode {
     TRY_BEGIN, TRY_END, THROW,
 
     // 异步
-    ASYNC_BEGIN, ASYNC_END,
+    ASYNC_BEGIN, ASYNC_END, AWAIT,
 
     // 字符串
     CONCAT,

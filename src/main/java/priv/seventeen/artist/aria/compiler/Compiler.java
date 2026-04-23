@@ -162,6 +162,10 @@ public class Compiler {
             return compileNew(expr, dst);
         } else if (node instanceof OptionalChainExpr expr) {
             return compileOptionalChain(expr, dst);
+        } else if (node instanceof AwaitExpr expr) {
+            int opReg = compileNode(expr.getOperand(), -1);
+            emit(IRInstruction.of(IROpCode.AWAIT, dst, opReg), expr.getLocation());
+            return dst;
         } else if (node instanceof SpreadExpr) {
             // SpreadExpr 在 compileList/compileCall 中特殊处理，不应单独出现
             return dst;

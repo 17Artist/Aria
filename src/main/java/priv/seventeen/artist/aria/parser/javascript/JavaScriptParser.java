@@ -621,15 +621,16 @@ public class JavaScriptParser {
     private ASTNode parseAsyncStmt() throws CompileException {
         Token start = advance(); // consume 'async'
         skipNewlines();
-        // async function ...
+        // async function ... — 直接返回普通函数声明
+        // （当前实现：async 作为 no-op 标记，body 同步执行。await 关键字在 body 内独立工作。
+        //  若需要"调用 async function 得到 Promise"语义，用户可手动 Promise.resolve 包装）
         if (check(TokenType.FUNCTION)) {
-            ASTNode funcDecl = parseFunctionDecl();
-            return new AsyncStmt(loc(start), funcDecl);
+            return parseFunctionDecl();
         }
         // async () => ... (箭头函数)
         ASTNode expr = parseAssignExpr();
         consumeStmtEnd();
-        return new AsyncStmt(loc(start), new ExpressionStmt(loc(start), expr));
+        return new ExpressionStmt(loc(start), expr);
     }
 
 
@@ -1357,6 +1358,12 @@ public class JavaScriptParser {
     private ASTNode parseUnaryExpr() throws CompileException {
         Token t = current;
         switch (t.getType()) {
+            case AWAIT: {
+                advance();
+                skipNewlines();
+                ASTNode operand = parseUnaryExpr();
+                return new AwaitExpr(loc(t), operand);
+            }
             case NOT: {
                 advance();
                 skipNewlines();

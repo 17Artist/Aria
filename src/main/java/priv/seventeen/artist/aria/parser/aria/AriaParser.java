@@ -1001,6 +1001,13 @@ public class AriaParser {
     private ASTNode parseUnaryExpr() throws CompileException {
         Token start = current;
 
+        // await expr
+        if (check(TokenType.AWAIT)) {
+            advance();
+            ASTNode operand = parseUnaryExpr();
+            return new priv.seventeen.artist.aria.ast.expression.AwaitExpr(loc(start), operand);
+        }
+
         // 前缀 !
         if (check(TokenType.NOT)) {
             advance();

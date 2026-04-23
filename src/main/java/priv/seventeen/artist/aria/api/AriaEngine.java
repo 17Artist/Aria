@@ -69,6 +69,7 @@ public class AriaEngine {
         DateTimeFunctions.register(CallableManager.INSTANCE);
         SchedulerFunctions.register(CallableManager.INSTANCE);
         TemplateFunctions.register(CallableManager.INSTANCE);
+        priv.seventeen.artist.aria.callable.builtin.PromiseFunctions.register(CallableManager.INSTANCE);
 
         CallableManager.INSTANCE.aliasNamespace("math", "Math");
         CallableManager.INSTANCE.aliasNamespace("console", "Console");
