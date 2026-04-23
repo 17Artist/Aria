@@ -1,0 +1,77 @@
+---
+interface Props { currentSlug: string; }
+const { currentSlug } = Astro.props;
+const baseUrl = import.meta.env.BASE_URL;
+
+const chapters = [
+  { slug: 'introduction', title: '介绍', order: 1 },
+  { slug: 'data-types', title: '数据类型', order: 2 },
+  { slug: 'variables', title: '变量系统', order: 3 },
+  { slug: 'operators', title: '运算符', order: 4 },
+  { slug: 'control-flow', title: '控制流', order: 5 },
+  { slug: 'functions', title: '函数', order: 6 },
+  { slug: 'classes', title: '类与继承', order: 7 },
+  { slug: 'error-handling', title: '异常处理', order: 8 },
+  { slug: 'modules', title: '模块系统', order: 9 },
+  { slug: 'stdlib', title: '标准库', order: 10 },
+  { slug: 'java-interop', title: 'Java 互操作', order: 11 },
+  { slug: 'embedding', title: 'JVM 嵌入', order: 12 },
+  { slug: 'javascript-compat', title: 'JS 兼容', order: 13 },
+  { slug: 'tooling', title: '工具链', order: 14 },
+];
+---
+
+<aside class="w-56 shrink-0 hidden lg:block">
+  <div class="sticky top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto py-8 pr-6">
+    <p class="text-[0.6rem] font-mono uppercase tracking-[0.2em] text-aria-ink-faint mb-4 pl-3">Guide</p>
+    <nav class="space-y-px">
+      {chapters.map((ch) => (
+        <a
+          href={baseUrl + 'docs/' + ch.slug}
+          class:list={[
+            'flex items-center gap-2.5 px-3 py-[0.4rem] rounded-md text-[0.82rem] transition-all duration-200',
+            currentSlug === ch.slug
+              ? 'text-aria-accent font-medium bg-aria-accent-wash'
+              : 'text-aria-ink-muted hover:text-aria-ink-secondary hover:bg-aria-accent-wash',
+          ]}
+        >
+          <span class="text-[0.62rem] text-aria-ink-faint font-mono w-4 text-right tabular-nums">{ch.order}</span>
+          <span>{ch.title}</span>
+        </a>
+      ))}
+    </nav>
+  </div>
+</aside>
+
+<!-- Mobile -->
+<button id="sidebar-toggle" class="lg:hidden fixed bottom-5 left-5 z-50 w-10 h-10 bg-aria-accent text-white rounded-full shadow-lg flex items-center justify-center" aria-label="Menu">
+  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h8m-8 6h16"/></svg>
+</button>
+<div id="sidebar-overlay" class="lg:hidden fixed inset-0 z-40 bg-black/30 hidden"></div>
+<div id="sidebar-mobile" class="lg:hidden fixed left-0 top-0 bottom-0 z-40 w-64 bg-white shadow-xl -translate-x-full transition-transform duration-300 pt-16 px-4 overflow-y-auto hidden">
+  <p class="text-[0.6rem] font-mono uppercase tracking-[0.2em] text-aria-ink-faint mb-4 pl-3">Guide</p>
+  <nav class="space-y-px pb-8">
+    {chapters.map((ch) => (
+      <a
+        href={baseUrl + 'docs/' + ch.slug}
+        class:list={[
+          'flex items-center gap-2.5 px-3 py-[0.4rem] rounded-md text-[0.82rem] transition-all',
+          currentSlug === ch.slug
+            ? 'text-aria-accent font-medium bg-aria-accent-wash'
+            : 'text-aria-ink-muted hover:text-aria-ink-secondary hover:bg-aria-accent-wash',
+        ]}
+      >
+        <span class="text-[0.62rem] text-aria-ink-faint font-mono w-4 text-right tabular-nums">{ch.order}</span>
+        <span>{ch.title}</span>
+      </a>
+    ))}
+  </nav>
+</div>
+
+<script>
+  const t = document.getElementById('sidebar-toggle'), o = document.getElementById('sidebar-overlay'), m = document.getElementById('sidebar-mobile');
+  function open() { m?.classList.remove('hidden'); o?.classList.remove('hidden'); requestAnimationFrame(() => m?.classList.remove('-translate-x-full')); }
+  function close() { m?.classList.add('-translate-x-full'); setTimeout(() => { m?.classList.add('hidden'); o?.classList.add('hidden'); }, 300); }
+  t?.addEventListener('click', open);
+  o?.addEventListener('click', close);
+</script>

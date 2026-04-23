@@ -1,0 +1,31 @@
+---
+const features = [
+  { title: 'dot 前缀变量', desc: 'var、val、global、server、client — 五种命名空间通过 dot 前缀分发到不同存储层。' },
+  { title: '箭头函数', desc: '所有函数使用 -> {} 定义。一等公民，闭包捕获，高阶函数，统一而简洁。' },
+  { title: 'JS 兼容模式', desc: '内置 ES6+ 解析器，.js 文件自动识别。共享同一套 IR / VM / JIT 管线。' },
+  { title: 'ASM JIT', desc: '四种编译路径：整数特化、浮点循环、递归记忆化、标准路径。热点代码编译为 JVM 字节码。' },
+  { title: 'Java 互操作', desc: 'use() 加载 JVM 类，Java.extend() 实现接口，注解驱动注册，完整双向互操作。' },
+  { title: '轻量嵌入', desc: '一行代码执行脚本，沙箱安全控制，预编译例程复用，模块系统与增量编译。' },
+];
+---
+
+<section class="py-14 px-6">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <p class="text-aria-ink-faint font-mono text-[0.65rem] tracking-[0.25em] uppercase mb-4">Features</p>
+      <h2 class="font-serif text-section font-semibold text-aria-ink mb-3">简单、直接、不过度设计</h2>
+      <p class="text-aria-ink-muted text-[0.92rem] max-w-md mx-auto">
+        没有分号，没有访问修饰符，没有接口。只有你需要的。
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5 stagger">
+      {features.map((f) => (
+        <div class="p-6 rounded-xl hover:bg-aria-accent-wash hover:shadow-sm transition-all duration-300" style="border: 1.5px solid #c5c9d6;">
+          <h3 class="font-serif text-[1.05rem] font-medium text-aria-ink mb-2">{f.title}</h3>
+          <p class="text-aria-ink-muted text-[0.84rem] leading-relaxed">{f.desc}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

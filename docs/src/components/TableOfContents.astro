@@ -1,0 +1,45 @@
+---
+interface Props { headings: { depth: number; slug: string; text: string }[]; }
+const { headings } = Astro.props;
+const toc = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+{toc.length > 0 && (
+  <aside class="w-48 shrink-0 hidden xl:block">
+    <div class="sticky top-16 max-h-[calc(100dvh-5rem)] overflow-y-auto py-8 pl-6">
+      <p class="text-[0.6rem] font-mono uppercase tracking-[0.2em] text-aria-ink-faint mb-4">On this page</p>
+      <nav class="space-y-0.5">
+        {toc.map((h) => (
+          <a
+            href={`#${h.slug}`}
+            data-slug={h.slug}
+            class:list={[
+              'toc-link block transition-colors duration-200 hover:text-aria-ink-secondary',
+              h.depth === 2
+                ? 'text-[0.78rem] text-aria-ink-faint py-[0.2rem]'
+                : 'text-[0.72rem] text-aria-ink-faint/70 py-[0.15rem] pl-3',
+            ]}
+          >
+            {h.text}
+          </a>
+        ))}
+      </nav>
+    </div>
+  </aside>
+)}
+
+<script>
+  const links = document.querySelectorAll('.toc-link');
+  const targets = Array.from(links).map(l => document.getElementById(l.getAttribute('data-slug') || '')).filter(Boolean) as HTMLElement[];
+  if (targets.length) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          links.forEach(l => l.classList.remove('!text-aria-accent', 'font-medium'));
+          document.querySelector(`.toc-link[data-slug="${e.target.id}"]`)?.classList.add('!text-aria-accent', 'font-medium');
+        }
+      });
+    }, { rootMargin: '-72px 0px -75% 0px' });
+    targets.forEach(t => io.observe(t));
+  }
+</script>

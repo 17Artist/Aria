@@ -24,3 +24,9 @@ Thumbs.db
 # Logs
 *.log
 /test/
+
+# Docs site (Astro)
+docs/node_modules/
+docs/dist/
+docs/.astro/
+docs/.vercel/

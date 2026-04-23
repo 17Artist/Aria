@@ -1,0 +1,63 @@
+---
+const baseUrl = import.meta.env.BASE_URL;
+const docsLink = baseUrl + 'docs/introduction';
+---
+
+<section class="relative pt-24 pb-10 lg:pt-28 lg:pb-12">
+  <div class="absolute inset-0 bg-gradient-to-b from-white via-aria-bg to-aria-bg"></div>
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-aria-accent/[0.05] rounded-full blur-[120px]"></div>
+
+  <div class="relative z-10 w-full max-w-6xl mx-auto px-6 grid lg:grid-cols-[1fr,1.15fr] gap-10 lg:gap-14 items-center">
+    <!-- 左 -->
+    <div>
+      <p class="text-aria-ink-faint font-mono text-[0.62rem] tracking-[0.25em] uppercase mb-5 animate-fade-in">
+        A Scripting Language on JVM
+      </p>
+
+      <h1 class="font-serif text-hero-sm lg:text-hero font-bold tracking-tight mb-4 animate-fade-in" style="animation-delay:.1s">
+        <span class="gradient-text">Aria</span>
+      </h1>
+
+      <p class="text-[1.1rem] text-aria-ink-secondary leading-relaxed mb-2 animate-fade-in" style="animation-delay:.2s">
+        轻量、快速、优雅。
+      </p>
+      <p class="text-[0.85rem] text-aria-ink-muted leading-[1.75] mb-8 max-w-[21rem] animate-fade-in" style="animation-delay:.28s">
+        KISS 设计理念，自有语法与 JavaScript 双模式，ASM JIT 编译。
+      </p>
+
+      <div class="flex items-center gap-3 animate-fade-in" style="animation-delay:.38s">
+        <a href={docsLink} class="px-5 py-2.5 text-[0.82rem] font-medium text-white bg-aria-accent rounded-lg hover:bg-aria-accent-light transition-colors shadow-md shadow-aria-accent/20">
+          阅读文档
+        </a>
+        <a href="https://github.com/17Artist/Aria" target="_blank" class="px-5 py-2.5 text-[0.82rem] font-medium text-aria-ink-muted border border-aria-line rounded-lg hover:border-aria-ink-faint hover:text-aria-ink-secondary transition-colors">
+          GitHub
+        </a>
+      </div>
+    </div>
+
+    <!-- 右：深色代码块 — 精简版 -->
+    <div class="animate-fade-up" style="animation-delay:.4s">
+      <div class="rounded-xl overflow-hidden shadow-lg shadow-black/[0.06]" style="border: 1.5px solid #2a2d42; background: #1e2030;">
+        <div class="flex items-center gap-1.5 px-5 py-2.5" style="border-bottom: 1px solid #2a2d42;">
+          <div class="w-2 h-2 rounded-full" style="background:#ff5f57"></div>
+          <div class="w-2 h-2 rounded-full" style="background:#febc2e"></div>
+          <div class="w-2 h-2 rounded-full" style="background:#28c840"></div>
+          <span class="ml-2 text-[0.62rem] font-mono tracking-wide" style="color:#565b73">hello.aria</span>
+        </div>
+        <div class="px-6 py-5 font-mono text-[0.82rem] leading-[1.75]" style="color:#8b92a8">
+          <p><span style="color:#565b73">// dot 前缀变量 + 箭头函数</span></p>
+          <p><span style="color:#565b73">var.</span><span style="color:#bfc7d5">greet</span> = <span style="color:#c792ea">{'->'}</span> {'{'}</p>
+          <p class="pl-5"><span style="color:#c792ea">return</span> <span style="color:#c3e88d">"Hello, "</span> + <span style="color:#8b92a8">args</span>[<span style="color:#f78c6c">0</span>] + <span style="color:#c3e88d">"!"</span></p>
+          <p>{'}'}</p>
+          <p>&nbsp;</p>
+          <p><span style="color:#565b73">// Java 互操作</span></p>
+          <p><span style="color:#565b73">val.</span><span style="color:#bfc7d5">HashMap</span> = <span style="color:#82aaff">use</span>(<span style="color:#c3e88d">'java.util.HashMap'</span>)</p>
+          <p><span style="color:#565b73">val.</span><span style="color:#bfc7d5">map</span> = <span style="color:#e8ecf4">HashMap</span>()</p>
+          <p><span style="color:#8b92a8">map</span>.<span style="color:#82aaff">put</span>(<span style="color:#c3e88d">'msg'</span>, <span style="color:#bfc7d5">greet</span>(<span style="color:#c3e88d">'Aria'</span>))</p>
+          <p>&nbsp;</p>
+          <p><span style="color:#82aaff">print</span>(<span style="color:#8b92a8">map</span>.<span style="color:#82aaff">get</span>(<span style="color:#c3e88d">'msg'</span>))  <span style="color:#565b73">// Hello, Aria!</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

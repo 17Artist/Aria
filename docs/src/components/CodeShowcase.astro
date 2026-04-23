@@ -1,0 +1,54 @@
+---
+---
+
+<section class="py-14 px-6 bg-white">
+  <div class="max-w-5xl mx-auto">
+    <div class="text-center mb-12 reveal">
+      <p class="text-aria-ink-faint font-mono text-[0.65rem] tracking-[0.25em] uppercase mb-4">Dual Syntax</p>
+      <h2 class="font-serif text-section font-semibold text-aria-ink mb-3">两种语法，一个引擎</h2>
+      <p class="text-aria-ink-muted text-[0.92rem] max-w-md mx-auto">
+        Aria 原生语法与 JavaScript 共享同一套编译管线。
+      </p>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-5 reveal">
+      <div class="rounded-xl overflow-hidden" style="border: 1.5px solid #2a2d42; background: #1e2030;">
+        <div class="flex items-center px-5 py-2.5 text-[0.62rem] font-mono" style="border-bottom: 1px solid #2a2d42;">
+          <span style="color:#82aaff">Aria</span>
+          <span style="color:#565b73" class="ml-auto">fibonacci.aria</span>
+        </div>
+        <div class="px-6 py-4 font-mono text-[0.8rem] leading-[1.7]" style="color:#8b92a8">
+          <p><span style="color:#565b73">var.</span><span style="color:#bfc7d5">fib</span> = <span style="color:#c792ea">{'->'}</span> {'{'}</p>
+          <p class="pl-5"><span style="color:#c792ea">if</span> (args[<span style="color:#f78c6c">0</span>] &lt;= <span style="color:#f78c6c">1</span>) {'{'}</p>
+          <p class="pl-10"><span style="color:#c792ea">return</span> args[<span style="color:#f78c6c">0</span>]</p>
+          <p class="pl-5">{'}'}</p>
+          <p class="pl-5"><span style="color:#c792ea">return</span> fib(args[<span style="color:#f78c6c">0</span>] - <span style="color:#f78c6c">1</span>) + fib(args[<span style="color:#f78c6c">0</span>] - <span style="color:#f78c6c">2</span>)</p>
+          <p>{'}'}</p>
+          <p>&nbsp;</p>
+          <p><span style="color:#82aaff">print</span>(fib(<span style="color:#f78c6c">10</span>))  <span style="color:#565b73">// 55</span></p>
+        </div>
+      </div>
+
+      <div class="rounded-xl overflow-hidden" style="border: 1.5px solid #2a2d42; background: #1e2030;">
+        <div class="flex items-center px-5 py-2.5 text-[0.62rem] font-mono" style="border-bottom: 1px solid #2a2d42;">
+          <span style="color:#ffcb6b">JavaScript</span>
+          <span style="color:#565b73" class="ml-auto">fibonacci.js</span>
+        </div>
+        <div class="px-6 py-4 font-mono text-[0.8rem] leading-[1.7]" style="color:#8b92a8">
+          <p><span style="color:#c792ea">function</span> <span style="color:#bfc7d5">fib</span>(<span style="color:#8b92a8">n</span>) {'{'}</p>
+          <p class="pl-5"><span style="color:#c792ea">if</span> (n &lt;= <span style="color:#f78c6c">1</span>) {'{'}</p>
+          <p class="pl-10"><span style="color:#c792ea">return</span> n;</p>
+          <p class="pl-5">{'}'}</p>
+          <p class="pl-5"><span style="color:#c792ea">return</span> fib(n - <span style="color:#f78c6c">1</span>) + fib(n - <span style="color:#f78c6c">2</span>);</p>
+          <p>{'}'}</p>
+          <p>&nbsp;</p>
+          <p><span style="color:#8b92a8">console</span>.<span style="color:#82aaff">log</span>(fib(<span style="color:#f78c6c">10</span>));  <span style="color:#565b73">// 55</span></p>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-center text-aria-ink-faint text-[0.78rem] mt-6 reveal">
+      .js 文件自动识别 &middot; this &rarr; self &middot; null &rarr; none &middot; === &rarr; == &middot; continue &rarr; next
+    </p>
+  </div>
+</section>
