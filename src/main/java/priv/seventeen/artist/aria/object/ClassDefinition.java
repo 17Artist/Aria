@@ -43,6 +43,9 @@ public class ClassDefinition implements IAriaObject {
     // 构造器
     private IRProgram constructorProgram;  // nullable
 
+    // 是否定义了任何 __get_xxx / __set_xxx 访问器（含父类继承）— GET_PROP/SET_PROP 据此短路
+    private boolean hasAnyAccessor;
+
     // 静态字段：name → mutable
     private final Map<String, Boolean> staticFieldMeta = new LinkedHashMap<>();
     // 静态字段值：name → IValue
@@ -63,8 +66,19 @@ public class ClassDefinition implements IAriaObject {
     public void setParent(ClassDefinition parent) { this.parent = parent; }
     public void addField(String name, boolean mutable) { fieldMeta.put(name, mutable); }
     public void setFieldInitProgram(IRProgram program) { this.fieldInitProgram = program; }
-    public void addMethod(String name, IRProgram body) { methods.put(name, body); }
+    public void addMethod(String name, IRProgram body) {
+        methods.put(name, body);
+        if (name.startsWith("__get_") || name.startsWith("__set_")) {
+            hasAnyAccessor = true;
+        }
+    }
     public void setConstructorProgram(IRProgram program) { this.constructorProgram = program; }
+
+    /** true iff 本类或任意父类定义了 __get_xxx / __set_xxx。GET_PROP / SET_PROP 据此短路 getter 查找。 */
+    public boolean hasAnyAccessor() {
+        if (hasAnyAccessor) return true;
+        return parent != null && parent.hasAnyAccessor();
+    }
 
     public void addStaticField(String name, boolean mutable) {
         staticFieldMeta.put(name, mutable);

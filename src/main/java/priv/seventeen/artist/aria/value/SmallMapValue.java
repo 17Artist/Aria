@@ -19,11 +19,18 @@ package priv.seventeen.artist.aria.value;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 小型 map 优化：固定容量数组 + 线性扫描，适用于属性 ≤ 8 的对象字面量。
+ * key 强制为 String（常见 JS 对象字面量场景）。读路径无 hash 计算无装箱，
+ * O(N) 但 N 小常数极小，比 HashMap 快数倍。
+ *
+ * put 在容量内直接原地修改；超容量返回 promote 后的 MapValue，调用方需替换。
+ */
 public final class SmallMapValue extends IValue<java.util.Map<IValue<?>, IValue<?>>> {
 
     private final String[] keys;
     private final IValue<?>[] values;
-    private final int size;
+    private int size;
 
     public SmallMapValue(String[] keys, IValue<?>[] values, int size) {
         this.keys = keys;
@@ -41,9 +48,33 @@ public final class SmallMapValue extends IValue<java.util.Map<IValue<?>, IValue<
 
 
     public IValue<?> get(IValue<?> key) {
-        String k = key.stringValue();
-        return get(k);
+        return get(key.stringValue());
     }
+
+    /**
+     * 写入 key=value。
+     * - 命中现有 key：原地更新，返回 this
+     * - 容量内新增：原地添加，返回 this
+     * - 容量外：升级为 MapValue 返回（调用方需用此结果替换原引用）
+     */
+    public IValue<?> put(String key, IValue<?> val) {
+        for (int i = 0; i < size; i++) {
+            if (key.equals(keys[i])) { values[i] = val; return this; }
+        }
+        if (size < keys.length) {
+            keys[size] = key;
+            values[size] = val;
+            size++;
+            return this;
+        }
+        // 容量耗尽：升级到 MapValue
+        Map<IValue<?>, IValue<?>> map = new LinkedHashMap<>(size * 2 + 2);
+        for (int i = 0; i < size; i++) map.put(new StringValue(keys[i], true), values[i]);
+        map.put(new StringValue(key, true), val);
+        return new MapValue(map);
+    }
+
+    public int size() { return size; }
 
     @Override
     public Map<IValue<?>, IValue<?>> jvmValue() {

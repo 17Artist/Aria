@@ -41,6 +41,7 @@ import priv.seventeen.artist.aria.object.IAriaObject;
 import priv.seventeen.artist.aria.object.RangeObject;
 import priv.seventeen.artist.aria.parser.SourceLocation;
 import priv.seventeen.artist.aria.value.*;
+import priv.seventeen.artist.aria.value.reference.IReference;
 import priv.seventeen.artist.aria.value.reference.ValueReference;
 import priv.seventeen.artist.aria.value.reference.VariableReference;
 
@@ -589,8 +590,8 @@ public class Interpreter {
                             ClassInstance ci = cv.jvmValue();
                             if (ci != null) {
                                 ClassDefinition classDef = ci.getClassDefinition();
-                                // 先检查 getter 方法: __get_propName
-                                if (classDef != null) {
+                                // 先检查 getter 方法: __get_propName（仅在类有任意访问器时查）
+                                if (classDef != null && classDef.hasAnyAccessor()) {
                                     IRProgram getterProg = classDef.findMethod("__get_" + propName);
                                     if (getterProg != null) {
                                         Context callCtx = context.createCallContext(obj, EMPTY_ARGS);
@@ -599,9 +600,10 @@ public class Interpreter {
                                         break;
                                     }
                                 }
-                                // 普通字段访问
-                                if (ci.getFields().containsKey(propName)) {
-                                    registers[inst.dst] = ci.getFields().get(propName).getValue();
+                                // 普通字段访问 — 单次 get 然后判 null
+                                IReference fieldRef = ci.getFields().get(propName);
+                                if (fieldRef != null) {
+                                    registers[inst.dst] = fieldRef.getValue();
                                 } else if (classDef != null) {
                                     // 查找类定义中的方法，包装为 FunctionValue
                                     IRProgram methodProg = classDef.findMethod(propName);
@@ -624,6 +626,8 @@ public class Interpreter {
                         } else if (obj instanceof MapValue mv) {
                             IValue<?> val = mv.jvmValue().get(new StringValue(propName));
                             registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                        } else if (obj instanceof SmallMapValue sm) {
+                            registers[inst.dst] = sm.get(propName);
                         } else if (obj instanceof ListValue lv && "length".equals(propName)) {
                             registers[inst.dst] = new NumberValue(lv.jvmValue().size());
                         } else if (obj instanceof StringValue sv && "length".equals(propName)) {
@@ -656,9 +660,9 @@ public class Interpreter {
                         } else if (obj instanceof AriaClassValue cv) {
                             ClassInstance ci = cv.jvmValue();
                             if (ci != null) {
-                                // 先检查 setter 方法: __set_propName
+                                // 先检查 setter 方法: __set_propName（仅当类有任意访问器时查）
                                 ClassDefinition classDef = ci.getClassDefinition();
-                                if (classDef != null) {
+                                if (classDef != null && classDef.hasAnyAccessor()) {
                                     IRProgram setterProg = classDef.findMethod("__set_" + propName);
                                     if (setterProg != null) {
                                         Context callCtx = context.createCallContext(obj, new IValue<?>[]{ val });
@@ -666,10 +670,19 @@ public class Interpreter {
                                         break;
                                     }
                                 }
-                                ci.getFields().put(propName, new VariableReference(val));
+                                // 已有 reference 则原地写，避免分配新 VariableReference
+                                IReference existing = ci.getFields().get(propName);
+                                if (existing != null) {
+                                    existing.setValue(val);
+                                } else {
+                                    ci.getFields().put(propName, new VariableReference(val));
+                                }
                             }
                         } else if (obj instanceof MapValue mv) {
                             mv.jvmValue().put(new StringValue(propName), val);
+                        } else if (obj instanceof SmallMapValue sm) {
+                            IValue<?> after = sm.put(propName, val);
+                            if (after != sm) registers[inst.dst] = after;
                         }
                         break;
                     }
@@ -696,6 +709,8 @@ public class Interpreter {
                                     val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                                 }
                                 registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                            } else if (obj instanceof SmallMapValue sm) {
+                                registers[inst.dst] = sm.get(idx);
                             } else if (obj instanceof StringValue sv) {
                                 int index = (int) idx.numberValue();
                                 String s = sv.stringValue();
@@ -744,6 +759,9 @@ public class Interpreter {
                                 list.set(index, val);
                             } else if (obj instanceof MapValue mv) {
                                 mv.jvmValue().put(idx, val);
+                            } else if (obj instanceof SmallMapValue sm) {
+                                IValue<?> after = sm.put(idx.stringValue(), val);
+                                if (after != sm) registers[inst.dst] = after;
                             } else if (obj instanceof ObjectValue<?> ov) {
                                 // IAriaObject 元素设置: obj['key'] = value
                                 // 通过 getElement 获取 Variable 引用再 setValue
@@ -1972,6 +1990,8 @@ public class Interpreter {
                                 val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                             }
                             registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                        } else if (obj instanceof SmallMapValue sm) {
+                            registers[inst.dst] = sm.get(idx);
                         } else if (obj instanceof StringValue sv) {
                             int index = (int) idx.numberValue();
                             String s = sv.stringValue();
