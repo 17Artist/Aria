@@ -318,11 +318,16 @@ public class Interpreter {
                             IValue<?> dst = registers[inst.dst];
                             if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
                             else { registers[inst.dst] = new NumberValue(r); }
+                        } else if (la instanceof MutableStringValue msv) {
+                            // 累加器模式：已是 MutableStringValue，原地追加，零分配
+                            registers[inst.dst] = msv.append(ra.stringValue());
                         } else if (la instanceof StringValue ls && ra instanceof StringValue rs
                                    && !ls.canBeNumber() && !rs.canBeNumber()) {
-                            registers[inst.dst] = RopeString.concat(new RopeString(ls.stringValue()), rs.stringValue());
+                            // 第一次字符串拼接：直接升级为 MutableStringValue，后续在同一 builder 上追加
+                            registers[inst.dst] = new MutableStringValue(ls.stringValue()).append(rs.stringValue());
                         } else if (la instanceof RopeString lrs) {
-                            registers[inst.dst] = RopeString.concat(lrs, ra.stringValue());
+                            // Rope 累加：flatten 一次转成 MutableStringValue，后续走上面的 msv 分支
+                            registers[inst.dst] = new MutableStringValue(lrs.stringValue()).append(ra.stringValue());
                         } else { registers[inst.dst] = la.add(ra); }
                         break;
                     }

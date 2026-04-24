@@ -57,4 +57,40 @@ public class FibSanityCheck {
             }
         }
     }
+
+    @Test
+    void ariaStringConcatCorrect() throws Exception {
+        Aria.getEngine().initialize();
+        // 先验证字符串内容正确（不依赖 length 调用）
+        AriaCompiledRoutine accum = Aria.compile("accum", """
+                var.s = ''
+                for (var.i = 0; var.i < 100000; var.i += 1) {
+                    var.s = var.s + 'a'
+                }
+                return var.s
+                """);
+        for (int i = 0; i < 20; i++) {
+            var result = accum.execute(Aria.createContext());
+            int len = result.stringValue().length();
+            if (len != 100000) {
+                throw new AssertionError("accum run " + i + " got len " + len + " (class=" + result.getClass().getSimpleName() + ")");
+            }
+        }
+
+        // 再验证 length() 调用
+        AriaCompiledRoutine routine = Aria.compile("strcat", """
+                var.s = ''
+                for (var.i = 0; var.i < 100000; var.i += 1) {
+                    var.s = var.s + 'a'
+                }
+                return var.s.length()
+                """);
+        for (int i = 0; i < 20; i++) {
+            var result = routine.execute(Aria.createContext());
+            double v = result.numberValue();
+            if (v != 100000.0) {
+                throw new AssertionError("length run " + i + " got " + v + " (class=" + result.getClass().getSimpleName() + ")");
+            }
+        }
+    }
 }
