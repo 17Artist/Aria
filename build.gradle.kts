@@ -71,6 +71,9 @@ jmh {
     fork.set(1)
     benchmarkMode.set(listOf("avgt"))
     timeUnit.set("ms")
+    if (project.hasProperty("jmhInclude")) {
+        includes.set(listOf(project.property("jmhInclude") as String))
+    }
 }
 
 val repoPassword = System.getenv("repo") ?: ""

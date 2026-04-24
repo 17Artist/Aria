@@ -97,30 +97,34 @@ console.log(dog.speak());
 
 ## 性能
 
-JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。单位 ms/op，数字越小越好。
+JMH 基准测试（OpenJDK 17，3 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。每个引擎单独运行两轮取均值。单位 ms/op，数字越小越好。
 
 | 工作负载                  | Aria    | Rhino | Nashorn | Groovy | GraalJS | Java 原生 |
 |-----------------------|---------|-------|---------|--------|---------|---------|
-| Loop Arithmetic 1M    | 0.222   | 25.23 | 14.30   | 5.14   | 94.05   | 0.233   |
-| Float Arithmetic 1M   | 1.78    | 26.13 | 14.02   | 5.54   | 85.49   | 0.94    |
-| String Concat 100K    | 0.72    | 2.74  | 1.86    | 1.02   | 8.25    | 0.112   |
-| Array/List Ops 10K    | 0.124   | 0.373 | 0.150   | 0.070  | 1.30    | 0.049   |
-| Object/Map Ops 10K    | 0.275   | 1.44  | 0.261   | 0.677  | 1.69    | 0.303   |
-| Branch Intensive 100K | 0.077   | 8.85  | 6.30    | 3.65   | 11.39   | 0.064   |
-| Fibonacci(25)         | 0.200   | 2.03  | 0.683   | 3.71   | 14.29   | 0.187   |
-| Function Call 100K    | 1.31    | 3.04  | 1.42    | 1.72   | 11.31   | ~1e-7   |
+| Loop Arithmetic 1M    | 0.231   | 23.91 | 13.48   | 4.21   | 77.30   | 0.230   |
+| Float Arithmetic 1M   | 1.84    | 27.24 | 13.25   | 5.02   | 79.16   | 0.921   |
+| String Concat 100K    | 0.776   | 2.52  | 1.91    | 0.927  | 8.12    | 0.094   |
+| Array/List Ops 10K    | 0.114   | 0.364 | 0.139   | 0.050  | 1.20    | 0.039   |
+| Object/Map Ops 10K    | 0.322   | 1.37  | 0.239   | 0.608  | 1.64    | 0.243   |
+| Branch Intensive 100K | 0.079   | 8.74  | 5.90    | 3.44   | 9.42    | 0.060   |
+| Fibonacci(25)         | 0.181   | 1.91  | 0.535   | 3.63   | 12.52   | 0.180   |
+| Function Call 100K    | 1.59    | 2.99  | 1.34    | 1.55   | 10.71   | ~0      |
 
 说明：
 
-- 数值循环（Loop / Branch）与 Java 原生基本持平；Object/Map 接近；Float / Array / String 慢于 Java 原生 1.5-7×（IValue 包装开销），但均快于同类脚本引擎
-- Fibonacci(25) 接近 Java 原生（0.21 vs 0.19 ms）——ASM JIT 把数值递归编译为 `static double callFast(double)` 后 JVM C2 继续内联
-- Function Call 100K Aria 与 Nashorn 接近（1.54 vs 1.42），慢于 Rhino/Groovy；Java `x = x+1` 100k 次被 C2 作为常量消除，数据接近零
+- 数值循环（Loop / Fibonacci）与 Java 原生持平；Branch / Object 接近；Float / Array / String 慢于 Java 原生 2-8×（IValue 包装开销），但均快于同类脚本引擎
+- Fibonacci(25) 0.181 ms 与 Java 0.180 ms 持平——ASM JIT 把数值递归编译为 `static double callFast(double)` 后 JVM C2 继续内联
+- Function Call 100K Aria 与 Nashorn / Groovy 处在同一量级；Java 原生的 `x = x+1` 100k 次被 C2 作为常量消除，数据接近零
 - GraalJS 在 OpenJDK 17 上以解释模式运行（缺 GraalVM Compiler runtime），用 GraalVM JDK 跑能显著提速
-- Float Arithmetic 的 Java 数据采用 `double` 循环变量（与 Aria 全 double 语义对等）；用 `int` 循环变量测得 2.82 ms
+- Float Arithmetic 的 Java 数据采用 `double` 循环变量（与 Aria 全 double 语义对等）；用 `int` 循环变量测得 2.74 ms
 
 跑法：
 ```bash
-./gradlew jmh -Pjmh.includes=".*Benchmark.*"
+# 单个引擎
+./gradlew jmh -PjmhInclude=AriaBenchmark
+
+# 全部
+./gradlew jmh
 ```
 
 
