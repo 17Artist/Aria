@@ -2,14 +2,14 @@
 // 数据来源：JMH 基准测试（OpenJDK 17，5 轮预热 + 5 轮测量 × 1s，单 fork，AverageTime 模式）。
 // 单位 ms/op，越小越好。
 const rows = [
-  { name: 'Loop Arithmetic 1M',    aria: '0.232',  rhino: '25.23', nashorn: '14.30', groovy: '5.14',  graaljs: '94.05', java: '0.233'  },
-  { name: 'Float Arithmetic 1M',   aria: '1.87',   rhino: '26.13', nashorn: '14.02', groovy: '5.54',  graaljs: '85.49', java: '0.94'   },
-  { name: 'String Concat 100K',    aria: '0.78',   rhino: '2.74',  nashorn: '1.86',  groovy: '1.02',  graaljs: '8.25',  java: '0.112'  },
-  { name: 'Array/List Ops 10K',    aria: '0.127',  rhino: '0.373', nashorn: '0.150', groovy: '0.070', graaljs: '1.30',  java: '0.049'  },
-  { name: 'Object/Map Ops 10K',    aria: '0.327',  rhino: '1.44',  nashorn: '0.261', groovy: '0.677', graaljs: '1.69',  java: '0.303'  },
-  { name: 'Branch Intensive 100K', aria: '0.070',  rhino: '8.85',  nashorn: '6.30',  groovy: '3.65',  graaljs: '11.39', java: '0.064'  },
-  { name: 'Fibonacci(25)',         aria: '0.211',  rhino: '2.03',  nashorn: '0.683', groovy: '3.71',  graaljs: '14.29', java: '0.187'  },
-  { name: 'Function Call 100K',    aria: '1.54',   rhino: '3.04',  nashorn: '1.42',  groovy: '1.72',  graaljs: '11.31', java: '~1e-7'  },
+  { name: 'Loop Arithmetic 1M',    aria: '0.222',  rhino: '25.23', nashorn: '14.30', groovy: '5.14',  graaljs: '94.05', java: '0.233'  },
+  { name: 'Float Arithmetic 1M',   aria: '1.78',   rhino: '26.13', nashorn: '14.02', groovy: '5.54',  graaljs: '85.49', java: '0.94'   },
+  { name: 'String Concat 100K',    aria: '0.72',   rhino: '2.74',  nashorn: '1.86',  groovy: '1.02',  graaljs: '8.25',  java: '0.112'  },
+  { name: 'Array/List Ops 10K',    aria: '0.124',  rhino: '0.373', nashorn: '0.150', groovy: '0.070', graaljs: '1.30',  java: '0.049'  },
+  { name: 'Object/Map Ops 10K',    aria: '0.275',  rhino: '1.44',  nashorn: '0.261', groovy: '0.677', graaljs: '1.69',  java: '0.303'  },
+  { name: 'Branch Intensive 100K', aria: '0.077',  rhino: '8.85',  nashorn: '6.30',  groovy: '3.65',  graaljs: '11.39', java: '0.064'  },
+  { name: 'Fibonacci(25)',         aria: '0.200',  rhino: '2.03',  nashorn: '0.683', groovy: '3.71',  graaljs: '14.29', java: '0.187'  },
+  { name: 'Function Call 100K',    aria: '1.31',   rhino: '3.04',  nashorn: '1.42',  groovy: '1.72',  graaljs: '11.31', java: '~1e-7'  },
 ];
 ---
 

@@ -93,4 +93,19 @@ public class FibSanityCheck {
             }
         }
     }
+
+    @Test
+    void floatProbe() throws Exception {
+        Aria.getEngine().initialize();
+        AriaCompiledRoutine routine = Aria.compile("float", """
+                var.result = 0.0
+                for (var.i = 1; var.i <= 100; var.i += 1) {
+                    var.result += 1.0 / var.i
+                }
+                return var.result
+                """);
+        for (int i = 0; i < 30; i++) routine.execute(Aria.createContext());
+        var r = routine.execute(Aria.createContext());
+        System.out.println("float probe: " + r.numberValue());
+    }
 }

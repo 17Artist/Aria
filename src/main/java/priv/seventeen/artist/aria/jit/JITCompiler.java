@@ -783,8 +783,10 @@ public class JITCompiler {
                 }
 
                 case MOVE -> {
-                    mv.visitVarInsn(DLOAD, fastRegToLocal[inst.a]);
-                    mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
+                    if (fastRegToLocal[inst.a] != fastRegToLocal[inst.dst]) {
+                        mv.visitVarInsn(DLOAD, fastRegToLocal[inst.a]);
+                        mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
+                    }
                 }
                 case PUSH_SCOPE, POP_SCOPE, NOP -> {}
             }
@@ -1174,8 +1176,10 @@ public class JITCompiler {
                 case NEW_FUNCTION -> {}
 
                 case MOVE -> {
-                    mv.visitVarInsn(DLOAD, fastRegToLocal[inst.a]);
-                    mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
+                    if (fastRegToLocal[inst.a] != fastRegToLocal[inst.dst]) {
+                        mv.visitVarInsn(DLOAD, fastRegToLocal[inst.a]);
+                        mv.visitVarInsn(DSTORE, fastRegToLocal[inst.dst]);
+                    }
                 }
                 case PUSH_SCOPE, POP_SCOPE, NOP -> {}
             }
@@ -1599,8 +1603,10 @@ public class JITCompiler {
                 case NEW_FUNCTION -> {}
 
                 case MOVE -> {
-                    mv.visitVarInsn(LLOAD, fastRegToLocal[inst.a]);
-                    mv.visitVarInsn(LSTORE, fastRegToLocal[inst.dst]);
+                    if (fastRegToLocal[inst.a] != fastRegToLocal[inst.dst]) {
+                        mv.visitVarInsn(LLOAD, fastRegToLocal[inst.a]);
+                        mv.visitVarInsn(LSTORE, fastRegToLocal[inst.dst]);
+                    }
                 }
                 case PUSH_SCOPE, POP_SCOPE, NOP -> {}
             }
@@ -2588,8 +2594,10 @@ public class JITCompiler {
                 case CALL_STATIC -> emitStaticCall(mv, regToLocal, inst, ctxLocal, className);
 
                 case MOVE -> {
-                    mv.visitVarInsn(ALOAD, regToLocal[inst.a]);
-                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                    if (regToLocal[inst.a] != regToLocal[inst.dst]) {
+                        mv.visitVarInsn(ALOAD, regToLocal[inst.a]);
+                        mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                    }
                 }
 
                 case PUSH_SCOPE -> {
