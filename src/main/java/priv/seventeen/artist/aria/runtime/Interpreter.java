@@ -1506,11 +1506,14 @@ public class Interpreter {
                                             entry.getKey(), className, null));
                                 }
                             }
+                            Map<String, IValue<?>> fieldDefaults = extractFieldDefaults(
+                                    classDef.getFieldInitProgram(), context, fieldAnns.keySet());
                             for (var entry : fieldAnns.entrySet()) {
+                                IValue<?> fieldValue = fieldDefaults.get(entry.getKey());
                                 for (var ann : entry.getValue()) {
                                     registry.register(new AnnotationRegistry.AnnotatedTarget(
                                             ann, AnnotationRegistry.AnnotatedTarget.TargetKind.FIELD,
-                                            entry.getKey(), className, null));
+                                            entry.getKey(), className, fieldValue));
                                 }
                             }
                         }
@@ -2737,5 +2740,84 @@ public class Interpreter {
         prog.setSubPrograms(subPrograms != null ? subPrograms : new IRProgram[0]);
         prog.setRegisterCount(regCount);
         return execute(prog, context).getValue();
+    }
+
+    /**
+     * 静态分析 fieldInitProgram 的 IR，为带注解的字段提取静态可识别的默认值。
+     *
+     * 仅识别简单赋值模式 {@code self.field = <literal-or-lambda>}：
+     * <ul>
+     *   <li>{@code NEW_FUNCTION} → 包装为 {@link FunctionValue}（用当前 context 做闭包捕获）</li>
+     *   <li>{@code LOAD_CONST} / {@code LOAD_TRUE} / {@code LOAD_FALSE} / {@code LOAD_NONE} → 直接取字面量</li>
+     * </ul>
+     * 复杂表达式（函数调用、运算、属性访问等）跳过——这类默认值依赖运行时上下文，
+     * 不能在 DEFINE_CLASS 时静态求值。
+     *
+     * 用途：DEFINE_CLASS 注册字段注解时，把默认值塞进 {@link AnnotationRegistry.AnnotatedTarget#value()}，
+     * 让 @derive 之类的消费者拿到 lambda/字面量。
+     */
+    private Map<String, IValue<?>> extractFieldDefaults(
+            IRProgram fieldInit, Context context, Set<String> wantedFields) {
+        if (fieldInit == null || wantedFields == null || wantedFields.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        IRInstruction[] code = fieldInit.getInstructions();
+        if (code == null || code.length == 0) return Collections.emptyMap();
+        IValue<?>[] consts = fieldInit.getConstants();
+        IRProgram[] subs = fieldInit.getSubPrograms();
+
+        Map<String, IValue<?>> result = new HashMap<>();
+        for (int i = 0; i < code.length; i++) {
+            IRInstruction inst = code[i];
+            if (inst.opcode != IROpCode.SET_PROP) continue;
+            String fieldName = inst.name;
+            if (fieldName == null || !wantedFields.contains(fieldName)) continue;
+            // SET_PROP 操作数：dst=objReg, a=valueReg
+            int valueReg = inst.a;
+
+            IRInstruction writer = null;
+            for (int j = i - 1; j >= 0; j--) {
+                if (code[j].dst == valueReg) {
+                    writer = code[j];
+                    break;
+                }
+            }
+            if (writer == null) continue;
+
+            IValue<?> v = null;
+            switch (writer.opcode) {
+                case NEW_FUNCTION -> {
+                    if (subs != null && writer.a >= 0 && writer.a < subs.length) {
+                        v = wrapSubProgramAsFunctionValue(subs[writer.a], context);
+                    }
+                }
+                case LOAD_CONST -> {
+                    if (consts != null && writer.a >= 0 && writer.a < consts.length) {
+                        v = consts[writer.a];
+                    }
+                }
+                case LOAD_TRUE -> v = BooleanValue.TRUE;
+                case LOAD_FALSE -> v = BooleanValue.FALSE;
+                case LOAD_NONE -> v = NoneValue.NONE;
+                default -> { /* 复杂表达式：跳过 */ }
+            }
+            if (v != null) result.put(fieldName, v);
+        }
+        return result;
+    }
+
+    /**
+     * 把 IRProgram 包装成可调用的 FunctionValue，供静态分析阶段使用。
+     * 闭包捕获当前 context（snapshotForClosure），调用时 createCallContext 以隔离 scope。
+     * 不做 JIT/fast-lambda 优化（subProg 自身的 JIT 计数依然可在后续调用中触发）。
+     */
+    private IValue<?> wrapSubProgramAsFunctionValue(IRProgram subProg, Context capturedCtx) {
+        Context snap = capturedCtx.snapshotForClosure();
+        Interpreter self = this;
+        return new FunctionValue((InvocationData data) -> {
+            IValue<?> target = data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE;
+            Context callCtx = snap.createCallContext(target, data.getArgs());
+            return self.execute(subProg, callCtx).getValue();
+        });
     }
 }

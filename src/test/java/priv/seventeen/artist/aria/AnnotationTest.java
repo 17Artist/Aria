@@ -20,9 +20,12 @@ import org.junit.jupiter.api.Test;
 import priv.seventeen.artist.aria.annotation.AnnotationRegistry;
 import priv.seventeen.artist.aria.annotation.AnnotationRegistry.AnnotatedTarget;
 import priv.seventeen.artist.aria.annotation.AriaAnnotation;
+import priv.seventeen.artist.aria.callable.InvocationData;
 import priv.seventeen.artist.aria.context.Context;
 import priv.seventeen.artist.aria.exception.AriaException;
+import priv.seventeen.artist.aria.value.FunctionValue;
 import priv.seventeen.artist.aria.value.IValue;
+import priv.seventeen.artist.aria.value.NumberValue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -234,5 +237,62 @@ class AnnotationTest {
         assertEquals(1, registry.findClassesByAnnotation("controller").size());
         assertEquals(0, registry.findClassesByAnnotation("nonexistent").size());
         assertEquals(3, registry.getAll().size());
+    }
+
+    /**
+     * 字段注解的 AnnotatedTarget.value() 必须携带字段默认值，
+     * 让 @derive 这类消费者能拿到 lambda 作为 ICallable / 字面量。
+     * 静态分析 fieldInitProgram 提取 NEW_FUNCTION / LOAD_CONST / LOAD_TRUE/FALSE/NONE。
+     */
+    @Test
+    void testFieldAnnotationCarriesDefaultValue() throws AriaException {
+        AnnotationRegistry registry = Aria.getEngine().getAnnotationRegistry();
+        registry.clear();
+
+        eval("""
+            class Calculator {
+                @derive
+                var.calc = -> { return args[0] + args[1] }
+
+                @meta
+                var.label = 'sum'
+
+                @flag
+                var.enabled = true
+
+                @missing
+                var.placeholder = none
+            }
+            """);
+
+        List<AnnotatedTarget> derives = registry.getAll().stream()
+                .filter(t -> "derive".equals(t.annotation().name()))
+                .toList();
+        assertEquals(1, derives.size());
+        IValue<?> calcValue = derives.get(0).value();
+        assertTrue(calcValue instanceof FunctionValue,
+                "@derive value 应为 FunctionValue, 实际: " + (calcValue == null ? "null" : calcValue.getClass()));
+
+        // 调用 lambda：args[0] + args[1] = 7
+        IValue<?> result = ((FunctionValue) calcValue).getCallable().invoke(
+                new InvocationData(Aria.createContext(), null,
+                        new IValue<?>[] { new NumberValue(3), new NumberValue(4) }));
+        assertEquals(7.0, result.numberValue(), 1e-9);
+
+        IValue<?> labelValue = registry.getAll().stream()
+                .filter(t -> "meta".equals(t.annotation().name()))
+                .findFirst().orElseThrow().value();
+        assertEquals("sum", labelValue.stringValue());
+
+        IValue<?> flagValue = registry.getAll().stream()
+                .filter(t -> "flag".equals(t.annotation().name()))
+                .findFirst().orElseThrow().value();
+        assertEquals(true, flagValue.booleanValue());
+
+        IValue<?> noneValue = registry.getAll().stream()
+                .filter(t -> "missing".equals(t.annotation().name()))
+                .findFirst().orElseThrow().value();
+        assertTrue(noneValue == null || "none".equals(noneValue.stringValue()),
+                "none 字面量应被识别");
     }
 }
