@@ -102,18 +102,18 @@ JMH 基准测试（OpenJDK 17，3 轮预热 + 5 轮测量 × 1s，单 fork，Ave
 | 工作负载                  | Aria    | Rhino | Nashorn | Groovy | GraalJS | Java 原生 |
 |-----------------------|---------|-------|---------|--------|---------|---------|
 | Loop Arithmetic 1M    | 0.232   | 25.47 | 14.46   | 5.42   | 79.78   | 0.232   |
-| Float Arithmetic 1M   | 1.86    | 25.32 | 14.04   | 5.10   | 84.73   | 0.923   |
-| String Concat 100K    | 0.807   | 2.68  | 1.97    | 0.945  | 8.43    | 0.098   |
-| Array/List Ops 10K    | 2.48    | 0.363 | 0.146   | 0.056  | 1.20    | 0.041   |
-| Object/Map Ops 10K    | 0.316   | 1.44  | 0.264   | 0.678  | 1.67    | 0.243   |
-| Branch Intensive 100K | 0.084   | 8.76  | 6.19    | 3.68   | 9.97    | 0.061   |
-| Fibonacci(25)         | 0.184   | 2.01  | 0.633   | 3.78   | 13.10   | 0.182   |
-| Function Call 100K    | 1.67    | 2.97  | 1.45    | 1.60   | 11.37   | ~0      |
+| Float Arithmetic 1M   | 1.85    | 25.32 | 14.04   | 5.10   | 84.73   | 0.923   |
+| String Concat 100K    | 0.793   | 2.68  | 1.97    | 0.945  | 8.43    | 0.098   |
+| Array/List Ops 10K    | 1.75    | 0.363 | 0.146   | 0.056  | 1.20    | 0.041   |
+| Object/Map Ops 10K    | 0.311   | 1.44  | 0.264   | 0.678  | 1.67    | 0.243   |
+| Branch Intensive 100K | 0.081   | 8.76  | 6.19    | 3.68   | 9.97    | 0.061   |
+| Fibonacci(25)         | 0.183   | 2.01  | 0.633   | 3.78   | 13.10   | 0.182   |
+| Function Call 100K    | 1.61    | 2.97  | 1.45    | 1.60   | 11.37   | ~0      |
 
 说明：
 
 - 数值循环（Loop / Fibonacci）与 Java 原生持平；Branch / Object 接近；Float / String 慢于 Java 原生 2-8×（IValue 包装开销），但仍快于其他脚本引擎
-- **Array/List Ops 10K：Aria 较慢（2.48 ms）**。每次 `lst.add(x)` 走 CALL_STATIC → rtCallByName → rtCallMethod → CallableManager.getObjectFunction，分发链较长。其他脚本引擎在数组 push 上有更直接的特化路径。**这一项是当前最明显的优化空间**
+- **Array/List Ops 10K：Aria 1.75 ms**。CALL_STATIC 在 JIT 路径下通过 `inst.cache` 缓存 `(objClass, ICallable)`，命中后跳过 CallableManager 的 HashMap 查找，相较缓存前的 2.48 ms 提速约 30%。仍是当前最明显的优化空间
 - Fibonacci(25) 0.184 ms 与 Java 0.182 ms 持平——ASM JIT 把数值递归编译为 `static double callFast(double)` 后 JVM C2 继续内联
 - Function Call 100K 中 Aria 与 Nashorn / Groovy 处在同一量级；Java 原生的 `x = x+1` 100k 次被 C2 作为常量消除，数据接近零
 - GraalJS 在 OpenJDK 17 上以解释模式运行（缺 GraalVM Compiler runtime），用 GraalVM JDK 跑能显著提速

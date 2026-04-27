@@ -235,6 +235,9 @@ public class JITCompiler {
         cw.visitField(ACC_PUBLIC | ACC_STATIC, "CONSTANTS", "[Lpriv/seventeen/artist/aria/value/IValue;", null, null).visitEnd();
         cw.visitField(ACC_PUBLIC | ACC_STATIC, "KEYS", "[Lpriv/seventeen/artist/aria/context/VariableKey;", null, null).visitEnd();
         cw.visitField(ACC_PUBLIC | ACC_STATIC, "SUB_PROGRAMS", "[" + IRPROGRAM_DESC, null, null).visitEnd();
+        // INSTS：每个 PC 对应的 IRInstruction，用于在 JIT 生成代码里通过 inst.cache 缓存运行时解析结果
+        cw.visitField(ACC_PUBLIC | ACC_STATIC, "INSTS",
+                "[Lpriv/seventeen/artist/aria/compiler/ir/IRInstruction;", null, null).visitEnd();
 
         if (fastDoubleRecursion) {
             // 生成 callFast(double, double, ...) → double
@@ -374,6 +377,7 @@ public class JITCompiler {
         clazz.getField("CONSTANTS").set(null, constants);
         clazz.getField("KEYS").set(null, keys);
         clazz.getField("SUB_PROGRAMS").set(null, subPrograms);
+        clazz.getField("INSTS").set(null, code);
         // 标记纯数值 JIT 路径不依赖 Context — NEW_FUNCTION 包装可省一层 lambda + InvocationData
         if (fastDoubleRecursion || fastDoubleVars || fastLongVars) {
             program.setJitContextFree(true);
@@ -2650,7 +2654,7 @@ public class JITCompiler {
                         }
                     }
                 }
-                case CALL_STATIC -> emitStaticCall(mv, regToLocal, inst, ctxLocal, className);
+                case CALL_STATIC -> emitStaticCall(mv, regToLocal, inst, ctxLocal, className, pc);
 
                 case MOVE -> {
                     if (regToLocal[inst.a] != regToLocal[inst.dst]) {
@@ -2956,7 +2960,7 @@ public class JITCompiler {
 
 
     private void emitStaticCall(MethodVisitor mv, int[] regToLocal, IRInstruction inst,
-                                int ctxLocal, String className) {
+                                int ctxLocal, String className, int pc) {
         String fn = inst.name;
         int argBase = inst.a;
         int argCnt = inst.b;
@@ -3082,8 +3086,13 @@ public class JITCompiler {
             return;
         }
 
-        // 所有未知函数（含 ns.method 形式）通过 rtCallByName 调用
-        mv.visitLdcInsn(fn);
+        // 所有未知函数（含 ns.method 形式）通过 rtCallByNameCached 调用
+        // 走 inst.cache 的快速路径：第一次解析 (objClass, methodName) → ICallable 后缓存，
+        // 后续相同 objClass 的调用跳过 CallableManager.getObjectFunction 查找
+        mv.visitFieldInsn(GETSTATIC, className, "INSTS",
+                "[Lpriv/seventeen/artist/aria/compiler/ir/IRInstruction;");
+        emitIntConst(mv, pc);
+        mv.visitInsn(AALOAD);
         emitIntConst(mv, argCnt);
         mv.visitTypeInsn(ANEWARRAY, IVALUE);
         for (int i = 0; i < argCnt; i++) {
@@ -3094,7 +3103,8 @@ public class JITCompiler {
         }
         mv.visitVarInsn(ALOAD, ctxLocal);
         mv.visitMethodInsn(INVOKESTATIC, "priv/seventeen/artist/aria/jit/JITCompiler",
-                "rtCallByName", "(Ljava/lang/String;[" + IVALUE_DESC + CONTEXT_DESC + ")" + IVALUE_DESC, false);
+                "rtCallByNameCached",
+                "(Lpriv/seventeen/artist/aria/compiler/ir/IRInstruction;[" + IVALUE_DESC + CONTEXT_DESC + ")" + IVALUE_DESC, false);
         mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
     }
 
@@ -3108,6 +3118,79 @@ public class JITCompiler {
         return NoneValue.NONE;
     }
 
+
+    /**
+     * inst.cache 中存储的对象方法解析结果，按 objClass 验证后复用。
+     * 避免每次调用都走 CallableManager.getObjectFunction 的 HashMap 查询。
+     */
+    public static final class StaticCallCache {
+        public final Class<?> objClass;
+        public final ICallable callable;
+        public StaticCallCache(Class<?> c, ICallable f) { this.objClass = c; this.callable = f; }
+    }
+
+    /**
+     * 带 inst.cache 的 rtCallByName。仅用于含 '.' 的 fn name（obj.method 形式）：
+     * 第一次解析 (objClass, methodName) → ICallable 写入 inst.cache，后续相同 objClass
+     * 直接复用，省去 CallableManager.getObjectFunction 查找。
+     *
+     * 不含 '.' 时退化到原 rtCallByName。
+     */
+    public static IValue<?> rtCallByNameCached(IRInstruction inst, IValue<?>[] args, Context ctx) {
+        String fn = inst.name;
+        int dot = fn == null ? -1 : fn.indexOf('.');
+        if (dot <= 0) return rtCallByName(fn, args, ctx);
+
+        try {
+            String baseName = fn.substring(0, dot);
+            String methodName = fn.substring(dot + 1);
+
+            // 1. 命名空间静态函数（如自注册的 "myns.myfn"）
+            ICallable nsFn = CallableManager.INSTANCE.getStaticFunction(baseName, methodName);
+            if (nsFn != null) {
+                return nsFn.invoke(new InvocationData(ctx, null, args));
+            }
+
+            // 2. resolveVariable: scope → var → global
+            VariableKey baseKey = VariableKey.of(baseName);
+            IValue<?> obj = null;
+            VariableReference scopeRef = ctx.getScopeStack().getExisting(baseKey);
+            if (scopeRef != null) obj = scopeRef.getValue();
+            if (obj == null || obj instanceof NoneValue) {
+                VariableReference varRef = ctx.getLocalStorage().getVarVariableExisting(baseKey);
+                if (varRef != null) obj = varRef.getValue();
+            }
+            if (obj == null || obj instanceof NoneValue) {
+                VariableReference globalRef = ctx.getGlobalStorage().getGlobalVariable(baseKey);
+                if (globalRef != null) obj = globalRef.getValue();
+            }
+            if (obj == null || obj instanceof NoneValue) return NoneValue.NONE;
+
+            // 3. 查 inst.cache，objClass 匹配则跳过 getObjectFunction 查询
+            Class<?> objClass = obj.getClass();
+            ICallable objFunc = null;
+            Object cached = inst.cache;
+            if (cached instanceof StaticCallCache scc && scc.objClass == objClass) {
+                objFunc = scc.callable;
+            } else {
+                objFunc = CallableManager.INSTANCE.getObjectFunction(objClass, methodName);
+                if (objFunc != null) {
+                    inst.cache = new StaticCallCache(objClass, objFunc);
+                }
+            }
+            if (objFunc != null) {
+                IValue<?>[] callArgs = new IValue<?>[args.length + 1];
+                callArgs[0] = obj;
+                System.arraycopy(args, 0, callArgs, 1, args.length);
+                return objFunc.invoke(new InvocationData(ctx, obj, callArgs));
+            }
+
+            // 4. 兜底：rtCallMethod 处理 AriaClassValue 实例方法 / FunctionValue 字段等
+            return rtCallMethod(obj, methodName, args, ctx);
+        } catch (Exception e) {
+            return NoneValue.NONE;
+        }
+    }
 
     public static IValue<?> rtCallByName(String name, IValue<?>[] args, Context ctx) {
         try {
