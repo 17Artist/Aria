@@ -36,6 +36,7 @@ import priv.seventeen.artist.aria.runtime.Result;
 import priv.seventeen.artist.aria.value.*;
 import priv.seventeen.artist.aria.value.reference.IReference;
 import priv.seventeen.artist.aria.value.reference.VariableReference;
+import priv.seventeen.artist.aria.value.ListValue;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -3122,21 +3123,63 @@ public class JITCompiler {
     /**
      * inst.cache 中存储的对象方法解析结果，按 objClass 验证后复用。
      * 避免每次调用都走 CallableManager.getObjectFunction 的 HashMap 查询。
+     *
+     * 缓存命中时还能跳过：substring 切名、getStaticFunction、scope/global 兜底；
+     * 对识别出的 builtin（如 ListValue.add）直接走专用快路径，跳过 ICallable+InvocationData 分配。
      */
     public static final class StaticCallCache {
+        public static final int KIND_GENERIC = 0;
+        public static final int KIND_LIST_ADD = 1;
+
         public final Class<?> objClass;
         public final ICallable callable;
-        public StaticCallCache(Class<?> c, ICallable f) { this.objClass = c; this.callable = f; }
+        public final VariableKey baseKey;
+        public final int kind;
+
+        public StaticCallCache(Class<?> c, ICallable f, VariableKey k, int kind) {
+            this.objClass = c;
+            this.callable = f;
+            this.baseKey = k;
+            this.kind = kind;
+        }
     }
 
     /**
-     * 带 inst.cache 的 rtCallByName。仅用于含 '.' 的 fn name（obj.method 形式）：
-     * 第一次解析 (objClass, methodName) → ICallable 写入 inst.cache，后续相同 objClass
-     * 直接复用，省去 CallableManager.getObjectFunction 查找。
+     * 带 inst.cache 的 rtCallByName。仅用于含 '.' 的 fn name（obj.method 形式）。
      *
-     * 不含 '.' 时退化到原 rtCallByName。
+     * Hot path（cache 命中）：直接 var-storage lookup → varRef.getValue() → 校验 objClass。
+     * 命中时根据 kind 走 builtin 专用路径或通用 ICallable 路径。不命中或类型不符回落 slow path。
      */
     public static IValue<?> rtCallByNameCached(IRInstruction inst, IValue<?>[] args, Context ctx) {
+        Object cached = inst.cache;
+        if (cached instanceof StaticCallCache scc) {
+            VariableReference varRef = ctx.getLocalStorage().getVarVariableExisting(scc.baseKey);
+            if (varRef != null) {
+                IValue<?> obj = varRef.getValue();
+                if (obj != null && obj.getClass() == scc.objClass) {
+                    try {
+                        switch (scc.kind) {
+                            case StaticCallCache.KIND_LIST_ADD: {
+                                ((ListValue) obj).jvmValue().add(args[0]);
+                                return NoneValue.NONE;
+                            }
+                            default: {
+                                IValue<?>[] callArgs = new IValue<?>[args.length + 1];
+                                callArgs[0] = obj;
+                                System.arraycopy(args, 0, callArgs, 1, args.length);
+                                return scc.callable.invoke(new InvocationData(ctx, obj, callArgs));
+                            }
+                        }
+                    } catch (Exception e) {
+                        return NoneValue.NONE;
+                    }
+                }
+            }
+        }
+        return rtCallByNameCachedSlow(inst, args, ctx);
+    }
+
+    private static IValue<?> rtCallByNameCachedSlow(IRInstruction inst, IValue<?>[] args, Context ctx) {
         String fn = inst.name;
         int dot = fn == null ? -1 : fn.indexOf('.');
         if (dot <= 0) return rtCallByName(fn, args, ctx);
@@ -3166,19 +3209,18 @@ public class JITCompiler {
             }
             if (obj == null || obj instanceof NoneValue) return NoneValue.NONE;
 
-            // 3. 查 inst.cache，objClass 匹配则跳过 getObjectFunction 查询
+            // 3. 解析 ICallable 并写入 inst.cache（仅当 obj 来源于 var-storage 时启用 hot path）
             Class<?> objClass = obj.getClass();
-            ICallable objFunc = null;
-            Object cached = inst.cache;
-            if (cached instanceof StaticCallCache scc && scc.objClass == objClass) {
-                objFunc = scc.callable;
-            } else {
-                objFunc = CallableManager.INSTANCE.getObjectFunction(objClass, methodName);
-                if (objFunc != null) {
-                    inst.cache = new StaticCallCache(objClass, objFunc);
-                }
-            }
+            ICallable objFunc = CallableManager.INSTANCE.getObjectFunction(objClass, methodName);
             if (objFunc != null) {
+                int kind = StaticCallCache.KIND_GENERIC;
+                if (objClass == ListValue.class && "add".equals(methodName)) {
+                    kind = StaticCallCache.KIND_LIST_ADD;
+                }
+                // 仅当变量来自 var-storage 时缓存（hot path 用 getVarVariableExisting 验证）
+                if (ctx.getLocalStorage().getVarVariableExisting(baseKey) != null) {
+                    inst.cache = new StaticCallCache(objClass, objFunc, baseKey, kind);
+                }
                 IValue<?>[] callArgs = new IValue<?>[args.length + 1];
                 callArgs[0] = obj;
                 System.arraycopy(args, 0, callArgs, 1, args.length);
