@@ -34,6 +34,7 @@ import priv.seventeen.artist.aria.object.RangeObject;
 import priv.seventeen.artist.aria.runtime.Interpreter;
 import priv.seventeen.artist.aria.runtime.Result;
 import priv.seventeen.artist.aria.value.*;
+import priv.seventeen.artist.aria.value.reference.IReference;
 import priv.seventeen.artist.aria.value.reference.VariableReference;
 
 import java.util.*;
@@ -94,8 +95,11 @@ public class JITCompiler {
                     // 变量与作用域
                 case STORE_VAR:
                 case LOAD_SCOPE, STORE_SCOPE:
-                    // 索引访问
+                    // 命名空间变量读取（写入暂走解释器）
+                case LOAD_GLOBAL, LOAD_SERVER, LOAD_CLIENT:
+                    // 索引访问 / 属性访问
                 case GET_INDEX:
+                case GET_PROP:
                     // 复合优化指令
                 case VAR_INC, VAR_ADD_CONST, VAR_ADD_REG:
                     // self / args
@@ -111,6 +115,10 @@ public class JITCompiler {
                 case NEW_LIST:
                 case NEW_MAP:
                 case SET_INDEX:
+                    // for-range（Compiler 当前未 emit，留作未来扩展防御）
+                case FOR_RANGE_INIT, FOR_RANGE_NEXT:
+                    // BREAK 当前 Compiler 编译为 JUMP，未实际 emit BREAK，防御性放行
+                case BREAK:
                     break;
                 case LOAD_VAR:
                     // LOAD_VAR 用于加载递归函数引用 — 允许
@@ -2045,6 +2053,57 @@ public class JITCompiler {
                     mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
                     mv.visitLabel(endGetIndex);
                 }
+                case GET_PROP -> {
+                    // dst = obj.propName  via rtGetProp(obj, propName, ctx)
+                    mv.visitVarInsn(ALOAD, regToLocal[inst.a]);
+                    mv.visitLdcInsn(inst.name == null ? "" : inst.name);
+                    mv.visitVarInsn(ALOAD, ctxLocal);
+                    mv.visitMethodInsn(INVOKESTATIC,
+                            "priv/seventeen/artist/aria/jit/JITCompiler", "rtGetProp",
+                            "(" + IVALUE_DESC + "Ljava/lang/String;" + CONTEXT_DESC + ")" + IVALUE_DESC, false);
+                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                }
+                case LOAD_GLOBAL -> {
+                    // dst = ctx.getGlobalStorage().getGlobalVariable(KEYS[a]).getValue()
+                    mv.visitVarInsn(ALOAD, ctxLocal);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, CONTEXT, "getGlobalStorage",
+                            "()Lpriv/seventeen/artist/aria/context/GlobalStorage;", false);
+                    mv.visitFieldInsn(GETSTATIC, className, "KEYS", "[" + VKEY_DESC);
+                    emitIntConst(mv, inst.a);
+                    mv.visitInsn(AALOAD);
+                    mv.visitMethodInsn(INVOKEVIRTUAL,
+                            "priv/seventeen/artist/aria/context/GlobalStorage", "getGlobalVariable",
+                            "(" + VKEY_DESC + ")" + VREF_DESC, false);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, VREF, "getValue", "()" + IVALUE_DESC, false);
+                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                }
+                case LOAD_SERVER -> {
+                    // dst = ctx.getServerVariable(KEYS[a]).ariaValue()
+                    mv.visitVarInsn(ALOAD, ctxLocal);
+                    mv.visitFieldInsn(GETSTATIC, className, "KEYS", "[" + VKEY_DESC);
+                    emitIntConst(mv, inst.a);
+                    mv.visitInsn(AALOAD);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, CONTEXT, "getServerVariable",
+                            "(" + VKEY_DESC + ")Lpriv/seventeen/artist/aria/value/Variable$Normal;", false);
+                    mv.visitMethodInsn(INVOKEVIRTUAL,
+                            "priv/seventeen/artist/aria/value/Variable$Normal", "ariaValue",
+                            "()" + IVALUE_DESC, false);
+                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                }
+                case LOAD_CLIENT -> {
+                    mv.visitVarInsn(ALOAD, ctxLocal);
+                    mv.visitFieldInsn(GETSTATIC, className, "KEYS", "[" + VKEY_DESC);
+                    emitIntConst(mv, inst.a);
+                    mv.visitInsn(AALOAD);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, CONTEXT, "getClientVariable",
+                            "(" + VKEY_DESC + ")Lpriv/seventeen/artist/aria/value/Variable$Normal;", false);
+                    mv.visitMethodInsn(INVOKEVIRTUAL,
+                            "priv/seventeen/artist/aria/value/Variable$Normal", "ariaValue",
+                            "()" + IVALUE_DESC, false);
+                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
+                }
+                // FOR_RANGE_INIT/NEXT/BREAK: Compiler 当前不 emit，留空 case 防御 IR 演进时崩溃
+                case FOR_RANGE_INIT, FOR_RANGE_NEXT, BREAK -> {}
                 case VAR_INC -> {
                     Integer vrSlot = varRefSlots.get(inst.a);
                     if (vrSlot != null) {
@@ -3079,6 +3138,35 @@ public class JITCompiler {
                 return globalFn.invoke(
                         new InvocationData(ctx, null, args));
             }
+            // bridge.method(args) 形式 — 闭包捕获对象的方法分派
+            // 当 name 含 '.' 且没有匹配的命名空间静态函数时，按解释器逻辑：
+            // 把第一段当变量解析，把第二段当方法调
+            int dot = name.indexOf('.');
+            if (dot > 0) {
+                String baseName = name.substring(0, dot);
+                String methodName = name.substring(dot + 1);
+                // 命名空间静态函数（如 math.sin、user-registered "X.Y"）
+                ICallable nsFn = CallableManager.INSTANCE.getStaticFunction(baseName, methodName);
+                if (nsFn != null) {
+                    return nsFn.invoke(new InvocationData(ctx, null, args));
+                }
+                // resolveVariable: scope → var → global
+                IValue<?> obj = null;
+                VariableKey baseKey = VariableKey.of(baseName);
+                VariableReference baseScopeRef = ctx.getScopeStack().getExisting(baseKey);
+                if (baseScopeRef != null) obj = baseScopeRef.getValue();
+                if (obj == null || obj instanceof NoneValue) {
+                    VariableReference baseVarRef = ctx.getLocalStorage().getVarVariableExisting(baseKey);
+                    if (baseVarRef != null) obj = baseVarRef.getValue();
+                }
+                if (obj == null || obj instanceof NoneValue) {
+                    VariableReference baseGlobalRef = ctx.getGlobalStorage().getGlobalVariable(baseKey);
+                    if (baseGlobalRef != null) obj = baseGlobalRef.getValue();
+                }
+                if (obj != null && !(obj instanceof NoneValue)) {
+                    return rtCallMethod(obj, methodName, args, ctx);
+                }
+            }
         } catch (Exception e) { /* ignore */ }
         return NoneValue.NONE;
     }
@@ -3206,6 +3294,55 @@ public class JITCompiler {
         mv.visitInsn(AALOAD);
         mv.visitMethodInsn(INVOKEVIRTUAL, LOCAL_STORAGE, "getVarVariable",
                 "(" + VKEY_DESC + ")" + VREF_DESC, false);
+    }
+
+    /**
+     * GET_PROP 运行时辅助：覆盖与 Interpreter.GET_PROP 相同的常用类型分支
+     * （MapValue / SmallMapValue / AriaClassValue / ObjectValue / list.length / string.length）。
+     * ClassDefinition 的静态方法 / __get_xxx getter 等少见路径走 Interpreter，本方法返回 NoneValue
+     * 而不是抛异常 —— 不会破坏脚本，只是该 GET_PROP 退化为 NONE，调用方按 NONE 处理。
+     */
+    public static IValue<?> rtGetProp(IValue<?> obj, String propName, Context ctx) {
+        if (obj == null) return NoneValue.NONE;
+        if (obj instanceof MapValue mv) {
+            IValue<?> val = mv.jvmValue().get(new StringValue(propName));
+            return val != null ? val : NoneValue.NONE;
+        }
+        if (obj instanceof SmallMapValue sm) {
+            IValue<?> v = sm.get(propName);
+            return v != null ? v : NoneValue.NONE;
+        }
+        if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
+            ClassInstance ci = cv.jvmValue();
+            IReference fieldRef = ci.getFields().get(propName);
+            if (fieldRef != null) return fieldRef.getValue();
+            // 类定义里的方法 → FunctionValue 包装
+            ClassDefinition classDef = ci.getClassDefinition();
+            if (classDef != null) {
+                IRProgram methodProg = classDef.findMethod(propName);
+                if (methodProg != null) {
+                    final IValue<?> capturedObj = obj;
+                    ICallable methodCallable = data -> {
+                        Context callCtx = data.getContext().createCallContext(capturedObj, data.getArgs());
+                        return new Interpreter().execute(methodProg, callCtx).getValue();
+                    };
+                    return new FunctionValue(methodCallable);
+                }
+            }
+            return NoneValue.NONE;
+        }
+        if (obj instanceof ObjectValue<?> ov) {
+            IAriaObject so = ov.jvmValue();
+            Variable v = so.getVariable(propName);
+            return v != null && v.ariaValue() != null ? v.ariaValue() : NoneValue.NONE;
+        }
+        if (obj instanceof ListValue lv && "length".equals(propName)) {
+            return new NumberValue(lv.jvmValue().size());
+        }
+        if (obj instanceof StringValue sv && "length".equals(propName)) {
+            return new NumberValue(sv.stringValue().length());
+        }
+        return NoneValue.NONE;
     }
 
     public static IValue<?> rtGetIndex(IValue<?> obj, IValue<?> idx) {

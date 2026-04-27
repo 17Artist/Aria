@@ -108,4 +108,58 @@ public class FibSanityCheck {
         var r = routine.execute(Aria.createContext());
         System.out.println("float probe: " + r.numberValue());
     }
+
+    /**
+     * GET_PROP / LOAD_GLOBAL JIT 路径回归保护：用 obj.prop 和 global.x 构造一段会被 JIT
+     * 编译的循环，反复执行触发 JIT，验证结果正确。
+     */
+    @Test
+    void ariaGetPropAndLoadGlobalCorrectAfterJit() throws Exception {
+        Aria.getEngine().initialize();
+        AriaCompiledRoutine routine = Aria.compile("getprop_loadglobal", """
+                global.counter = 0
+                var.obj = {'x': 7, 'y': 11}
+                var.sum = 0
+                for (var.i = 0; var.i < 50; var.i += 1) {
+                    var.sum += obj.x + obj.y
+                    global.counter += 1
+                }
+                return var.sum
+                """);
+        // (7+11) * 50 = 900
+        for (int i = 0; i < 20; i++) {
+            var result = routine.execute(Aria.createContext());
+            double v = result.numberValue();
+            if (v != 900.0) {
+                throw new AssertionError("Run " + i + " got " + v + " expected 900.0");
+            }
+        }
+    }
+
+    /**
+     * bridge.xxx（闭包捕获对象的方法调用）JIT 路径回归保护：
+     * scope 里有一个 map（充当 bridge），通过 bridge.somekey 拿到值。
+     * 这种 obj.method 形式以前在 JIT 路径下走 rtCallByName 返回 NoneValue，现在应正确分派。
+     */
+    @Test
+    void ariaListAddCorrectAfterJit() throws Exception {
+        Aria.getEngine().initialize();
+        // 这个 routine 里有 list.add(...)，CALL_STATIC name="list.add"。
+        // 修复前 rtCallByName 不识别 obj.method 形式，每次 add 静默返回 NoneValue，
+        // 导致 list 永远是空的，list.size() 返回 0。
+        AriaCompiledRoutine routine = Aria.compile("listadd", """
+                var.lst = []
+                for (var.i = 0; var.i < 10000; var.i += 1) {
+                    lst.add(var.i)
+                }
+                return lst.size()
+                """);
+        for (int i = 0; i < 20; i++) {
+            var result = routine.execute(Aria.createContext());
+            double v = result.numberValue();
+            if (v != 10000.0) {
+                throw new AssertionError("Run " + i + " got " + v + " expected 10000.0 (list 应有 10000 个元素)");
+            }
+        }
+    }
 }
