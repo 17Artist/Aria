@@ -116,10 +116,6 @@ public class JITCompiler {
                 case NEW_LIST:
                 case NEW_MAP:
                 case SET_INDEX:
-                    // for-range（Compiler 当前未 emit，留作未来扩展防御）
-                case FOR_RANGE_INIT, FOR_RANGE_NEXT:
-                    // BREAK 当前 Compiler 编译为 JUMP，未实际 emit BREAK，防御性放行
-                case BREAK:
                     break;
                 case LOAD_VAR:
                     // LOAD_VAR 用于加载递归函数引用 — 允许
@@ -2107,8 +2103,13 @@ public class JITCompiler {
                             "()" + IVALUE_DESC, false);
                     mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
                 }
-                // FOR_RANGE_INIT/NEXT/BREAK: Compiler 当前不 emit，留空 case 防御 IR 演进时崩溃
-                case FOR_RANGE_INIT, FOR_RANGE_NEXT, BREAK -> {}
+                // FOR_RANGE_INIT/NEXT/BREAK：Compiler 当前不 emit；canCompile 也已不放行。
+                // 若被 emit 触发说明 Compiler 新增了 emit 但未实现 JIT 路径——失败比静默生成
+                // 空循环体安全（早期版本曾留 -> {} 空 case，会导致循环被 JIT 跳过）。
+                case FOR_RANGE_INIT, FOR_RANGE_NEXT, BREAK ->
+                        throw new IllegalStateException(
+                                "JIT emit not implemented for opcode " + inst.opcode
+                                        + " — canCompile() should have rejected this program");
                 case VAR_INC -> {
                     Integer vrSlot = varRefSlots.get(inst.a);
                     if (vrSlot != null) {

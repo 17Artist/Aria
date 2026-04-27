@@ -130,6 +130,12 @@ public class ModuleLoader {
     public ModuleResolver getResolver() { return resolver; }
     public ModuleCache getCache() { return cache; }
 
+    /**
+     * 模块源码内容哈希，用于增量编译缓存键。
+     * 故意不做 fallback：SHA-256 是 JDK 1.4.2 起的强制算法，若 getInstance 失败说明
+     * JRE 安装异常，此时回落到 String.hashCode 会引入碰撞风险（不同源码命中同一缓存条目，
+     * 返回错误的 IRProgram）。直接抛出让上层感知，比悄悄返回弱键安全。
+     */
     private static String sha256(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -137,8 +143,8 @@ public class ModuleLoader {
             StringBuilder hex = new StringBuilder();
             for (byte b : digest) hex.append(String.format("%02x", b));
             return hex.toString();
-        } catch (Exception e) {
-            return String.valueOf(input.hashCode());
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 unavailable in current JRE", e);
         }
     }
 }
