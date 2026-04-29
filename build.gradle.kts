@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "priv.seventeen.artist.aria"
-version = "1.0.1"
+version = (findProperty("releaseVersion") as String?) ?: "1.0.1"
 
 java {
     toolchain {

@@ -30,10 +30,10 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: ./gradlew clean assemble -x test -Pversion=${{ steps.version.outputs.version }}
+        run: ./gradlew clean assemble -x test -PreleaseVersion=${{ steps.version.outputs.version }}
 
       - name: Publish to Maven repository
         env:
           repo: ${{ secrets.MAVEN_REPO_PASSWORD }}
           BUILD_NUMBER: ${{ github.run_number }}
-        run: ./gradlew deploy -x test -Pversion=${{ steps.version.outputs.version }}
+        run: ./gradlew deploy -x test -PreleaseVersion=${{ steps.version.outputs.version }}
