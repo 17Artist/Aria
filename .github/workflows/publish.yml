@@ -36,4 +36,4 @@ jobs:
         env:
           repo: ${{ secrets.MAVEN_REPO_PASSWORD }}
           BUILD_NUMBER: ${{ github.run_number }}
-        run: ./gradlew deploy -x test -PreleaseVersion=${{ steps.version.outputs.version }} -PmavenRepoUrl=${{ secrets.MAVEN_REPO_URL }} -PmavenRepoUser=${{ secrets.MAVEN_REPO_USER }}
+        run: ./gradlew deploy -x test -PreleaseVersion=${{ steps.version.outputs.version }}
