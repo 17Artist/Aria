@@ -1,0 +1,3 @@
+// 循环依赖 B：依赖 A（A 又依赖 B）→ 应被检测为循环并报错
+import cyc_a as a
+export val.tag = 'b'

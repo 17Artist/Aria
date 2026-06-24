@@ -1,0 +1,3 @@
+// 触发循环依赖：import cyc_a → cyc_a import cyc_b → cyc_b import cyc_a（循环）
+import cyc_a as x
+return x.tag

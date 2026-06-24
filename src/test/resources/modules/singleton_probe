@@ -1,0 +1,3 @@
+// 单例探针：顶层自增一个 global 计数器；单例缓存下整个模块只应执行一次
+global.singletonRuns = global.singletonRuns + 1
+export val.runs = global.singletonRuns

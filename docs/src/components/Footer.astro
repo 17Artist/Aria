@@ -1,0 +1,15 @@
+---
+const baseUrl = import.meta.env.BASE_URL;
+const docsLink = baseUrl + 'docs/introduction';
+---
+
+<footer class="py-10 px-6 border-t border-aria-line">
+  <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-[0.75rem] text-aria-ink-faint">
+    <span class="font-serif text-sm text-aria-ink-muted">Aria</span>
+    <div class="flex items-center gap-5">
+      <a href={docsLink} class="hover:text-aria-ink-secondary transition-colors">文档</a>
+      <a href="https://github.com/17Artist/Aria" target="_blank" class="hover:text-aria-ink-secondary transition-colors">GitHub</a>
+      <span>Java 17+</span>
+    </div>
+  </div>
+</footer>

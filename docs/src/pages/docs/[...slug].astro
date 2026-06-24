@@ -1,0 +1,105 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Navbar from '../../components/Navbar.astro';
+import DocsSidebar from '../../components/DocsSidebar.astro';
+import TableOfContents from '../../components/TableOfContents.astro';
+import Footer from '../../components/Footer.astro';
+import { getCollection } from 'astro:content';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((doc) => ({ params: { slug: doc.slug }, props: { doc } }));
+}
+
+const { doc } = Astro.props;
+const { Content, headings } = await doc.render();
+const all = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
+const idx = all.findIndex((d) => d.slug === doc.slug);
+const prev = idx > 0 ? all[idx - 1] : null;
+const next = idx < all.length - 1 ? all[idx + 1] : null;
+const baseUrl = import.meta.env.BASE_URL;
+---
+
+<BaseLayout title={`${doc.data.title} — Aria`} description={doc.data.description}>
+  <Navbar />
+
+  <div class="pt-14 min-h-[100dvh]">
+    <div class="max-w-[76rem] mx-auto px-4 sm:px-6 flex">
+      <DocsSidebar currentSlug={doc.slug} />
+
+      <main class="flex-1 min-w-0 py-10 px-2 sm:px-6">
+        <article class="docs-prose max-w-3xl">
+          <Content />
+        </article>
+
+        <nav class="max-w-3xl mt-16 pt-8 border-t border-aria-line flex justify-between gap-4">
+          {prev ? (
+            <a href={baseUrl + 'docs/' + prev.slug} class="group flex flex-col items-start py-2">
+              <span class="text-[0.68rem] text-aria-ink-faint mb-0.5">&larr; 上一章</span>
+              <span class="text-sm text-aria-ink-muted group-hover:text-aria-accent transition-colors">{prev.data.title}</span>
+            </a>
+          ) : <div />}
+          {next ? (
+            <a href={baseUrl + 'docs/' + next.slug} class="group flex flex-col items-end py-2">
+              <span class="text-[0.68rem] text-aria-ink-faint mb-0.5">下一章 &rarr;</span>
+              <span class="text-sm text-aria-ink-muted group-hover:text-aria-accent transition-colors">{next.data.title}</span>
+            </a>
+          ) : <div />}
+        </nav>
+      </main>
+
+      <TableOfContents headings={headings} />
+    </div>
+  </div>
+
+  <Footer />
+
+  <!-- Mermaid 客户端渲染 -->
+  <script>
+    async function renderMermaid() {
+      const pres = document.querySelectorAll('pre.mermaid');
+      if (pres.length === 0) return;
+
+      const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'base',
+        themeVariables: {
+          primaryColor: '#dfe3f0',
+          primaryTextColor: '#111827',
+          primaryBorderColor: '#a8aec4',
+          lineColor: '#9ca3af',
+          secondaryColor: '#eaecf4',
+          tertiaryColor: '#f5f6fb',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          fontSize: '13px',
+          nodeBorder: '#a8aec4',
+          mainBkg: '#dfe3f0',
+          clusterBkg: '#eaecf4',
+          clusterBorder: '#a8aec4',
+          edgeLabelBackground: '#f5f6fb',
+        },
+        flowchart: { curve: 'basis', padding: 16 },
+        block: { padding: 12 },
+      });
+
+      for (const pre of pres) {
+        const def = pre.textContent || '';
+        const id = `mermaid-${Math.random().toString(36).slice(2, 8)}`;
+        try {
+          const { svg } = await mermaid.render(id, def);
+          const container = document.createElement('div');
+          container.className = 'my-7 flex justify-center rounded-xl p-6 overflow-x-auto';
+          container.style.cssText = 'border: 1.5px solid #c5c9d6; background: #f8f9fd;';
+          container.innerHTML = svg;
+          const svgEl = container.querySelector('svg');
+          if (svgEl) { svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto'; }
+          pre.replaceWith(container);
+        } catch (e) {
+          console.warn('Mermaid render failed:', e);
+        }
+      }
+    }
+    renderMermaid();
+  </script>
+</BaseLayout>

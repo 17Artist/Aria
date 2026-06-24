@@ -1,0 +1,3 @@
+// 循环依赖 A：依赖 B（B 又依赖 A）
+import cyc_b as b
+export val.tag = 'a'

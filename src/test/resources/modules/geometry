@@ -1,0 +1,5 @@
+// 几何模块：演示「模块导入模块」+ 闭包捕获导入的符号
+// 命名导入 square / PI，circleArea 闭包引用它们
+import { square, PI } from 'mathlib'
+
+export var.circleArea = -> { return PI * square(args[0]) }

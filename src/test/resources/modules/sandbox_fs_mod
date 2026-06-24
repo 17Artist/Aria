@@ -1,0 +1,3 @@
+// 沙箱探针：模块顶层调用 fs（受限命名空间）。在只允许 math 的沙箱下 import 应被阻止。
+val.x = fs.read('nope.txt')
+export val.ok = 1

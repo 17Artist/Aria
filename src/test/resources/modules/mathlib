@@ -1,0 +1,4 @@
+// 数学工具模块 —— 用 export 声明公共接口（import 时得到一个 Module 对象）
+export var.square = -> { return args[0] * args[0] }
+export var.add = -> { return args[0] + args[1] }
+export val.PI = 3.14159

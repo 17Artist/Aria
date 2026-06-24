@@ -1,0 +1,29 @@
+{
+    "name": "aria-lang",
+    "displayName": "Aria Language",
+    "description": "Syntax highlighting for the Aria scripting language",
+    "version": "1.0.0",
+    "license": "Apache-2.0",
+    "publisher": "17artist",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": ["Programming Languages"],
+    "contributes": {
+        "languages": [
+            {
+                "id": "aria",
+                "aliases": ["Aria", "aria"],
+                "extensions": [".aria"],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "aria",
+                "scopeName": "source.aria",
+                "path": "./syntaxes/aria.tmLanguage.json"
+            }
+        ]
+    }
+}

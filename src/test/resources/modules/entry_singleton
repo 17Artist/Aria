@@ -1,0 +1,3 @@
+// 通过 import 触发单例缓存（直接 load 不走 __import__，故必须用脚本 import）
+import singleton_probe as m
+return m

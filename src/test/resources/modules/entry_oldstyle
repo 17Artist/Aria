@@ -1,0 +1,3 @@
+// 向后兼容：命名导入一个用 return-map 暴露 API 的旧式模块
+import { greet } from 'oldstyle_map'
+return greet('bob')   // 'hi bob'

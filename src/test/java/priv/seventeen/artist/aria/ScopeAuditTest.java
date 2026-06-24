@@ -1,0 +1,72 @@
+/*
+ * Copyright 2026 17Artist
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package priv.seventeen.artist.aria;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import priv.seventeen.artist.aria.exception.AriaException;
+import priv.seventeen.artist.aria.runtime.Interpreter;
+import priv.seventeen.artist.aria.value.IValue;
+import priv.seventeen.artist.aria.value.NoneValue;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/** 作用域/闭包对抗审查：重点验证 STORE_SCOPE 改动后，块内赋值更新外层 vs 声明性绑定(catch/for-in)的局部性。 */
+public class ScopeAuditTest {
+    @BeforeAll static void s() { Aria.getEngine().initialize(); }
+    @BeforeEach void r() { Interpreter.resetCallDepth(); Interpreter.clearSandbox(); }
+    private IValue<?> eval(String c) throws AriaException { return Aria.eval(c, Aria.createContext()); }
+    private double num(String c) throws AriaException { return eval(c).numberValue(); }
+    private String str(String c) throws AriaException { return eval(c).stringValue(); }
+    private boolean none(String c) throws AriaException { return eval(c) instanceof NoneValue; }
+
+    // 块内裸名赋值应更新外层（我的 STORE_SCOPE 修复目标）
+    @Test void ifBlockAssignUpdatesOuter() throws Exception { assertEquals(5.0, num("var.r=0\nif (true) { r=5 }\nreturn r"), 1e-9); }
+    @Test void whileBlockAssignUpdatesOuter() throws Exception { assertEquals(10.0, num("var.s=0\nvar.i=0\nwhile (i<5) { s=s+i\ni=i+1 }\nreturn s"), 1e-9); }
+    @Test void nestedBlockAssignUpdatesOuter() throws Exception { assertEquals(9.0, num("var.x=1\nif (true) { if (true) { x=9 } }\nreturn x"), 1e-9); }
+    @Test void forBodyAssignUpdatesOuter() throws Exception { assertEquals(11.0, num("var.r=0\nfor (i in Range(0,100)) { if (i>10) { break }\n r=r+1 }\nreturn r"), 1e-9); }
+
+    // 块内首次裸名新变量：块外不可见（局部）
+    @Test void blockNewBareVarLocal() throws Exception { assertTrue(none("if (true) { y=5 }\nreturn y")); }
+
+    // 声明性绑定的局部性（关键回归点）
+    @Test void catchVarShadowsOuter() throws Exception {
+        // catch(e) 应 shadow 外层 var.e，不污染它
+        assertEquals("outer", str("var.e='outer'\ntry { throw 'boom' } catch (e) { }\nreturn e"));
+    }
+    @Test void catchVarUsableInBlock() throws Exception {
+        assertEquals("msg", str("try { throw 'msg' } catch (e) { return e }"));
+    }
+    @Test void catchVarNotLeaked() throws Exception {
+        assertTrue(none("try { throw 'x' } catch (e) { }\nreturn e"));
+    }
+    @Test void forInVarShadowsOuter() throws Exception {
+        // for-in 循环变量应 shadow 外层 var.i，不污染它
+        assertEquals(99.0, num("var.i=99\nfor (i in Range(0,3)) { }\nreturn i"), 1e-9);
+    }
+
+    // 闭包语义（STORE_SCOPE 改动后闭包能见外层修改）
+    @Test void closureMutableCounter() throws Exception {
+        assertEquals(3.0, num("var.counter=-> { var.count=0\n return -> { count++\n return count } }\nval.n=counter()\nvar.a=n()\nvar.b=n()\nreturn a+b"), 1e-9);
+    }
+    @Test void twoCountersIndependent() throws Exception {
+        assertEquals(3.0, num("var.mk=-> { var.c=0\n return -> { c++\n return c } }\nval.a=mk()\nval.b=mk()\na()\na()\nreturn a() + 0*b()"), 1e-9);
+    }
+    @Test void closureSeesOuterMutation() throws Exception {
+        assertEquals(21.0, num("var.x=10\nvar.f=-> { return x+1 }\nf()\nx=20\nreturn f()"), 1e-9);
+    }
+}

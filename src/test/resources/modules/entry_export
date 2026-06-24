@@ -1,0 +1,3 @@
+// export 可见性：导入只用 export 的模块，dot 访问其导出符号
+import export_mod as e
+return e.secret   // 42

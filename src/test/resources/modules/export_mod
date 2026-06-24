@@ -1,0 +1,3 @@
+// export 现在对消费者可见：导入后用 dot 访问 e.secret / e.LABEL
+export var.secret = 42
+export val.LABEL = 'hi'

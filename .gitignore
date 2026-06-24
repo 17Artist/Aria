@@ -1,0 +1,33 @@
+# Build
+build/
+out/
+
+# Gradle
+.gradle/
+gradle-app.setting
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Java
+*.class
+*.jar
+*.war
+
+# Logs
+*.log
+/test/
+
+# Docs site (Astro)
+docs/node_modules/
+docs/dist/
+docs/.astro/
+docs/.vercel/
+/bin/
