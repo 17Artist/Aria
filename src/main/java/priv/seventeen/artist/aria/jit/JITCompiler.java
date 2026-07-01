@@ -1261,16 +1261,18 @@ public class JITCompiler {
             }
             case JUMP -> mv.visitJumpInsn(GOTO, labels[inst.a]);
             case JUMP_IF_TRUE -> {
+                // Shimmer 对齐：真值 = value > 0（DCMPL 结果 -1/0/1，IFGT 仅在 value>0 跳转；NaN->-1 视为假）
                 mv.visitVarInsn(DLOAD, fastRegToLocal[inst.dst]);
                 mv.visitInsn(DCONST_0);
                 mv.visitInsn(DCMPL);
-                mv.visitJumpInsn(IFNE, labels[inst.a]);
+                mv.visitJumpInsn(IFGT, labels[inst.a]);
             }
             case JUMP_IF_FALSE -> {
+                // Shimmer 对齐：假值 = value <= 0（含 NaN，DCMPL->-1，IFLE 跳转）
                 mv.visitVarInsn(DLOAD, fastRegToLocal[inst.dst]);
                 mv.visitInsn(DCONST_0);
                 mv.visitInsn(DCMPL);
-                mv.visitJumpInsn(IFEQ, labels[inst.a]);
+                mv.visitJumpInsn(IFLE, labels[inst.a]);
             }
             case JUMP_IF_NONE -> {
                 // 在 double 路径中，NONE 映射为 0.0 — 不跳转
@@ -1694,16 +1696,18 @@ public class JITCompiler {
             }
             case JUMP -> mv.visitJumpInsn(GOTO, labels[inst.a]);
             case JUMP_IF_TRUE -> {
+                // Shimmer 对齐：真值 = value > 0（LCMP 结果 -1/0/1，IFGT 仅在 value>0 跳转）
                 mv.visitVarInsn(LLOAD, fastRegToLocal[inst.dst]);
                 mv.visitInsn(LCONST_0);
                 mv.visitInsn(LCMP);
-                mv.visitJumpInsn(IFNE, labels[inst.a]);
+                mv.visitJumpInsn(IFGT, labels[inst.a]);
             }
             case JUMP_IF_FALSE -> {
+                // Shimmer 对齐：假值 = value <= 0
                 mv.visitVarInsn(LLOAD, fastRegToLocal[inst.dst]);
                 mv.visitInsn(LCONST_0);
                 mv.visitInsn(LCMP);
-                mv.visitJumpInsn(IFEQ, labels[inst.a]);
+                mv.visitJumpInsn(IFLE, labels[inst.a]);
             }
             case JUMP_IF_NONE -> {
                 // 在 long 路径中，NONE 映射为 0L — 不跳转

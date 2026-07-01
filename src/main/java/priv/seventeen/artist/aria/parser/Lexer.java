@@ -456,7 +456,9 @@ public class Lexer {
                     return makeToken(TokenType.SPREAD, "...", startLine, startCol);
                 }
                 if (c1 == '.') {
-                    throw new CompileException("无效的运算符 '..'，你是否想用 '...'？", startLine, startCol);
+                    // Shimmer 对齐：`..` 区间运算符（此前抛错并导致解析器错误恢复死循环）
+                    advance(); advance();
+                    return makeToken(TokenType.RANGE, "..", startLine, startCol);
                 }
                 advance();
                 return makeToken(TokenType.DOT, ".", startLine, startCol);

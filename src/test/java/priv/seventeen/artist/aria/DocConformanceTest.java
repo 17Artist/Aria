@@ -75,7 +75,8 @@ public class DocConformanceTest {
     @Test void listConcat() throws Exception { assertEquals(4.0, num("return ([1,2]+[3,4]).size()"), 1e-9); }
     @Test void listAppendElement() throws Exception { assertEquals(4.0, num("return ([1,2,3]+4).size()"), 1e-9); }
     @Test void listRemoveByIndex() throws Exception { assertEquals(2.0, num("var.l=[1,2,3]-0\nreturn l[0]"), 1e-9); }
-    @Test void listOutOfBoundsReadNone() throws Exception { assertTrue(isNone("var.l=[1]\nreturn l[5]")); }
+    // Shimmer 对齐：显式索引越界抛异常（而非静默 none）
+    @Test void listOutOfBoundsReadThrows() { assertThrows(AriaException.class, () -> eval("var.l=[1]\nreturn l[5]")); }
     @Test void listOutOfBoundsWriteFills() throws Exception { assertEquals(6.0, num("var.l=[1]\nl[5]=9\nreturn l.size()"), 1e-9); }
 
     // map 运算
@@ -83,7 +84,7 @@ public class DocConformanceTest {
     @Test void mapMissingKeyNone() throws Exception { assertTrue(isNone("var.m={'a':1}\nreturn m['z']")); }
 
     // 类型转换
-    @Test void typeToString() throws Exception { assertEquals("42", str("return type.toString(42)")); }
+    @Test void typeToString() throws Exception { assertEquals("42.0", str("return type.toString(42)")); } // Shimmer 对齐：数字恒 double 格式
     @Test void typeToBooleanZero() throws Exception { assertFalse(bool("return type.toBoolean(0)")); }
     @Test void typeToBooleanOne() throws Exception { assertTrue(bool("return type.toBoolean(1)")); }
     @Test void typeIsString() throws Exception { assertTrue(bool("return type.isString('h')")); }
@@ -131,7 +132,7 @@ public class DocConformanceTest {
 
     // number+string 强制转换规则
     @Test void numberPlusConvertibleString() throws Exception { assertEquals(3.0, num("return 1 + '2'"), 1e-9); }
-    @Test void numberPlusNonNumericString() throws Exception { assertEquals("1a", str("return 1 + 'a'")); }
+    @Test void numberPlusNonNumericString() throws Exception { assertEquals("1.0a", str("return 1 + 'a'")); } // Shimmer 对齐
     @Test void stringMinusSubstring() throws Exception { assertEquals("abc", str("return 'aXbXc' - 'X'")); }
 
     // 短路求值（右侧不应触发除零）
@@ -179,7 +180,7 @@ public class DocConformanceTest {
         assertTrue(isNone("var.f=-> { if (args[0] < 0) { return }\n return args[0] }\nreturn f(-5)"));
     }
     @Test void forInMapKeyValue() throws Exception {
-        assertEquals("a=1;b=2;", str("val.m={'a':1,'b':2}\nvar.s=''\nfor (k, v in m) { s += k + '=' + v + ';' }\nreturn s"));
+        assertEquals("a=1.0;b=2.0;", str("val.m={'a':1,'b':2}\nvar.s=''\nfor (k, v in m) { s += k + '=' + v + ';' }\nreturn s")); // Shimmer 对齐
     }
 
     // ===================== functions.md =====================
@@ -200,10 +201,10 @@ public class DocConformanceTest {
         assertEquals("fig", str("val.l=['banana','apple','fig']\nl.sortBy(-> { return args[0].length() })\nreturn l[0]"));
     }
     @Test void listJoinDefaultSep() throws Exception {
-        assertEquals("1,2,3", str("return [1,2,3].join()"));
+        assertEquals("1.0,2.0,3.0", str("return [1,2,3].join()")); // Shimmer 对齐：数字恒 double 格式
     }
     @Test void listForEachIndex() throws Exception {
-        assertEquals("012", str("var.s=''\n['a','b','c'].forEach(-> { s += args[1] })\nreturn s"));
+        assertEquals("0.01.02.0", str("var.s=''\n['a','b','c'].forEach(-> { s += args[1] })\nreturn s")); // Shimmer 对齐：索引是数字→N.0
     }
     @Test void mapFilterByValue() throws Exception {
         assertEquals(2.0, num("val.s={'math':90,'english':55,'science':80}\nval.p=s.filter(-> { return args[1] >= 60 })\nreturn p.size()"), 1e-9);

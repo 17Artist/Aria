@@ -50,7 +50,7 @@ public class SyntaxAuditTest {
 
     // ---------- 字符串 ----------
     @Test void strSingle() throws Exception { assertEquals("hi", str("return 'hi'")); }
-    @Test void strDoubleInterp() throws Exception { assertEquals("v=3", str("return \"v={1+2}\"")); }
+    @Test void strDoubleInterp() throws Exception { assertEquals("v=3.0", str("return \"v={1+2}\"")); } // Shimmer 对齐：数字恒 double 格式
     @Test void strTriple() throws Exception { assertEquals("a\nb", str("return \"\"\"a\nb\"\"\"")); }
     @Test void strEscapes() throws Exception { assertEquals("a\tb\nc", str("return 'a\\tb\\nc'")); }
     @Test void strConcat() throws Exception { assertEquals("ab", str("return 'a' + 'b'")); }

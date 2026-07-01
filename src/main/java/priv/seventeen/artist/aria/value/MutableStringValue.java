@@ -40,7 +40,8 @@ public final class MutableStringValue extends IValue<String> {
         if (cached == null) cached = builder.toString();
         return cached;
     }
-    @Override public boolean booleanValue() { return builder.length() > 0; }
+    // Shimmer 对齐：字符串真值恒用 parseBoolean（仅 "true" 忽略大小写为真），与 StringValue 一致，避免拼接串真值跑偏。
+    @Override public boolean booleanValue() { return Boolean.parseBoolean(stringValue()); }
     @Override public int typeID() { return 3; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return true; }

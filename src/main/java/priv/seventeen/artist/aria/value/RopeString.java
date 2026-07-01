@@ -78,7 +78,8 @@ public final class RopeString extends IValue<String> {
     @Override public String jvmValue() { return stringValue(); }
     @Override public double numberValue() { return 0; }
     @Override public String stringValue() { return flat != null ? flat : flatten(); }
-    @Override public boolean booleanValue() { return length > 0; }
+    // Shimmer 对齐：字符串真值恒用 parseBoolean（仅 "true" 忽略大小写为真），与 StringValue 一致。
+    @Override public boolean booleanValue() { return Boolean.parseBoolean(stringValue()); }
     @Override public int typeID() { return 3; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return true; }

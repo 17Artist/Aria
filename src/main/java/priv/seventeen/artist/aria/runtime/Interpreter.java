@@ -719,8 +719,12 @@ public class Interpreter {
                                 List<IValue<?>> list = lv.jvmValue();
                                 if (index >= 0 && index < list.size()) {
                                     registers[inst.dst] = list.get(index);
-                                } else {
+                                } else if (inst.c == 1) {
+                                    // for-in 迭代哨兵：越界=终止，保持 none
                                     registers[inst.dst] = NoneValue.NONE;
+                                } else {
+                                    // Shimmer 对齐：显式索引越界抛异常（而非静默 none）
+                                    throw new AriaRuntimeException("列表索引越界: " + index + " (size=" + list.size() + ")");
                                 }
                             } else if (obj instanceof MapValue mv) {
                                 if (inst.c == 1) {
@@ -2109,7 +2113,13 @@ public class Interpreter {
                         if (obj instanceof ListValue lv) {
                             int index = (int) idx.numberValue();
                             List<IValue<?>> list = lv.jvmValue();
-                            registers[inst.dst] = (index >= 0 && index < list.size()) ? list.get(index) : NoneValue.NONE;
+                            if (index >= 0 && index < list.size()) {
+                                registers[inst.dst] = list.get(index);
+                            } else if (inst.c == 1) {
+                                registers[inst.dst] = NoneValue.NONE; // for-in 迭代哨兵
+                            } else {
+                                throw new AriaRuntimeException("列表索引越界: " + index + " (size=" + list.size() + ")");
+                            }
                         } else if (obj instanceof MapValue mv) {
                             if (inst.c == 1) {
                                 registers[inst.dst] = mapEntryAt(mv.jvmValue(), (int) idx.numberValue());
@@ -2695,13 +2705,14 @@ public class Interpreter {
                 case GT -> regs[inst.dst] = regs[inst.a] > regs[inst.b] ? 1 : 0;
                 case LE -> regs[inst.dst] = regs[inst.a] <= regs[inst.b] ? 1 : 0;
                 case GE -> regs[inst.dst] = regs[inst.a] >= regs[inst.b] ? 1 : 0;
-                case NOT -> regs[inst.dst] = regs[inst.a] == 0 ? 1 : 0;
-                case AND -> regs[inst.dst] = (regs[inst.a] != 0 && regs[inst.b] != 0) ? 1 : 0;
-                case OR -> regs[inst.dst] = (regs[inst.a] != 0 || regs[inst.b] != 0) ? 1 : 0;
+                // Shimmer 对齐：数值真值 = value > 0（负数/0/NaN 均假），修复热路径把负数当 true 的 bug。
+                case NOT -> regs[inst.dst] = regs[inst.a] <= 0 ? 1 : 0;
+                case AND -> regs[inst.dst] = (regs[inst.a] > 0 && regs[inst.b] > 0) ? 1 : 0;
+                case OR -> regs[inst.dst] = (regs[inst.a] > 0 || regs[inst.b] > 0) ? 1 : 0;
 
                 case JUMP -> { pc = inst.a; continue; }
-                case JUMP_IF_TRUE -> { if (regs[inst.dst] != 0) { pc = inst.a; continue; } }
-                case JUMP_IF_FALSE -> { if (regs[inst.dst] == 0) { pc = inst.a; continue; } }
+                case JUMP_IF_TRUE -> { if (regs[inst.dst] > 0) { pc = inst.a; continue; } }
+                case JUMP_IF_FALSE -> { if (regs[inst.dst] <= 0) { pc = inst.a; continue; } }
 
                 case MOVE -> regs[inst.dst] = regs[inst.a];
 
@@ -2872,13 +2883,14 @@ public class Interpreter {
                 case GT -> regs[inst.dst] = regs[inst.a] > regs[inst.b] ? 1 : 0;
                 case LE -> regs[inst.dst] = regs[inst.a] <= regs[inst.b] ? 1 : 0;
                 case GE -> regs[inst.dst] = regs[inst.a] >= regs[inst.b] ? 1 : 0;
-                case NOT -> regs[inst.dst] = regs[inst.a] == 0 ? 1 : 0;
-                case AND -> regs[inst.dst] = (regs[inst.a] != 0 && regs[inst.b] != 0) ? 1 : 0;
-                case OR -> regs[inst.dst] = (regs[inst.a] != 0 || regs[inst.b] != 0) ? 1 : 0;
+                // Shimmer 对齐：数值真值 = value > 0（负数/0/NaN 均假），修复热路径把负数当 true 的 bug。
+                case NOT -> regs[inst.dst] = regs[inst.a] <= 0 ? 1 : 0;
+                case AND -> regs[inst.dst] = (regs[inst.a] > 0 && regs[inst.b] > 0) ? 1 : 0;
+                case OR -> regs[inst.dst] = (regs[inst.a] > 0 || regs[inst.b] > 0) ? 1 : 0;
 
                 case JUMP -> { pc = inst.a; continue; }
-                case JUMP_IF_TRUE -> { if (regs[inst.dst] != 0) { pc = inst.a; continue; } }
-                case JUMP_IF_FALSE -> { if (regs[inst.dst] == 0) { pc = inst.a; continue; } }
+                case JUMP_IF_TRUE -> { if (regs[inst.dst] > 0) { pc = inst.a; continue; } }
+                case JUMP_IF_FALSE -> { if (regs[inst.dst] <= 0) { pc = inst.a; continue; } }
 
                 case MOVE -> regs[inst.dst] = regs[inst.a];
 

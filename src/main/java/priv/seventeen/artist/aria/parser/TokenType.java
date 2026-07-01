@@ -29,6 +29,7 @@ public enum TokenType {
     
     EQ, NE, LT, GT, LE, GE,
     IN_RANGE,  // ~~
+    RANGE,     // ..  区间字面量 a..b（Shimmer 对齐，降解为 Range(a,b)）
     
     AND, OR, NOT,
     

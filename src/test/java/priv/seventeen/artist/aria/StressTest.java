@@ -416,13 +416,13 @@ public class StressTest {
             var.num = 42
             return "hello {name}, value={num}"
             """);
-        assertEquals("hello World, value=42", result.stringValue());
+        assertEquals("hello World, value=42.0", result.stringValue()); // Shimmer 对齐：数字恒 double 格式
     }
 
     @Test
     void testStringInterpolationExpression() throws AriaException {
-        assertEquals("result is 15", eval("return \"result is {10 + 5}\"\n").stringValue());
-        assertEquals("sum is 100", eval("return \"sum is {40 + 60}\"\n").stringValue());
+        assertEquals("result is 15.0", eval("return \"result is {10 + 5}\"\n").stringValue()); // Shimmer 对齐
+        assertEquals("sum is 100.0", eval("return \"sum is {40 + 60}\"\n").stringValue()); // Shimmer 对齐
     }
 
     @Test

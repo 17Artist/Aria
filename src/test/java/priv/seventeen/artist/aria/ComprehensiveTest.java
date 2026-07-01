@@ -52,7 +52,7 @@ public class ComprehensiveTest {
         IValue<?> result = eval("""
             return "value is {1 + 2}"
             """);
-        assertEquals("value is 3", result.stringValue());
+        assertEquals("value is 3.0", result.stringValue()); // Shimmer 对齐：数字恒 double 格式
     }
 
     //  2. Switch 穿透
@@ -675,7 +675,7 @@ public class ComprehensiveTest {
             val.r = list.filter(-> { return args[0] % 2 == 0 }).map(-> { return args[0] * 10 }).join(',')
             return r
             """);
-        assertEquals("20,40,60", result.stringValue());
+        assertEquals("20.0,40.0,60.0", result.stringValue()); // Shimmer 对齐：数字恒 double 格式
     }
 
     //  24. Try-catch-finally

@@ -95,7 +95,7 @@ public class RealVerifyTest {
     @Test void ariaPackageRoundTripWithNewOpcodes(@TempDir Path tmp) throws Exception {
         // 同一模块同时含 try/catch(DECLARE_SCOPE)与 map 展开(MAP_MERGE)
         String code = "var.r=''\ntry { throw 'X' } catch (e) { r = e }\nvar.m={...{'a':1},'b':2}\nreturn r + '|' + m.size()\n";
-        assertEquals("X|2", str(code)); // 直接执行基线
+        assertEquals("X|2.0", str(code)); // 直接执行基线（Shimmer 对齐：size()→2.0）
 
         var prog = Aria.compile("complex", code).getProgram();
         Path pkg = tmp.resolve("complex.ariapkg");
@@ -114,7 +114,7 @@ public class RealVerifyTest {
 
         var loaded = reader.getModule("complex");
         var res = new Interpreter().execute(loaded, Aria.createContext()).getValue();
-        assertEquals("X|2", res.stringValue(), "打包往返后含新 opcode 的模块应正确执行");
+        assertEquals("X|2.0", res.stringValue(), "打包往返后含新 opcode 的模块应正确执行");
     }
 
     @Test void ariaPackageBackCompatOldAriaSuffix(@TempDir Path tmp) throws Exception {

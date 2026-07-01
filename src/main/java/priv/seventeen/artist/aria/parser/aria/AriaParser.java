@@ -947,7 +947,7 @@ public class AriaParser {
     }
 
     private ASTNode parseRelExpr() throws CompileException {
-        ASTNode left = parseShiftExpr();
+        ASTNode left = parseRangeExpr();
 
         BinaryExpr.BinaryOp op = switch (current.getType()) {
             case EQ -> BinaryExpr.BinaryOp.EQ;
@@ -967,10 +967,26 @@ public class AriaParser {
         if (op != null) {
             advance();
             skipNewlines();
-            ASTNode right = parseShiftExpr();
+            ASTNode right = parseRangeExpr();
             return new BinaryExpr(left.getLocation(), left, op, right);
         }
 
+        return left;
+    }
+
+    // Shimmer 对齐：a..b 区间字面量。降解为 Range(a,b) 构造调用，复用既有 RangeObject 运行时路径。
+    // 精度介于关系运算(~~ 等)与移位之间，故 `x ~~ 3..7` 先构造 3..7 再做区间包含。
+    private ASTNode parseRangeExpr() throws CompileException {
+        ASTNode left = parseShiftExpr();
+        if (check(TokenType.RANGE)) {
+            advance();
+            skipNewlines();
+            ASTNode right = parseShiftExpr();
+            java.util.List<ASTNode> args = new java.util.ArrayList<>(2);
+            args.add(left);
+            args.add(right);
+            left = new CallExpr(left.getLocation(), new IdentifierExpr(left.getLocation(), "Range"), args);
+        }
         return left;
     }
 
