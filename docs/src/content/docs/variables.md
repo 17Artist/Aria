@@ -31,7 +31,7 @@ Aria 的变量系统是语言最核心的设计之一。与传统语言使用关
 ```aria
 var.x = 10
 var.x = 20           // 可重新赋值
-print(x)             // 20
+print(x)             // 20.0
 ```
 
 声明后可以通过裸标识符直接访问：
@@ -89,7 +89,7 @@ Aria.compile("test", ctx, "return val.PI").execute();
 ```aria
 global.score = 0
 global.score += 10
-print(global.score)  // 10
+print(global.score)  // 10.0
 ```
 
 典型用途：跨脚本共享状态、全局计数器、配置项。
@@ -157,7 +157,7 @@ if (true) {
 var.count ~= 0       // 首次执行：声明并赋值 0
 var.count ~= 0       // 再次执行：变量已存在，不覆盖，获取已有值
 count += 1
-print(count)         // 1
+print(count)         // 1.0
 ```
 
 典型用途：在可能被多次执行的代码块中安全地初始化变量，避免重复赋值覆盖已有状态。
@@ -192,7 +192,7 @@ class Player {
 }
 
 val.p = Player('Alice', 80)
-print(p.info())      // Alice HP: 80
+print(p.info())      // Alice HP: 80.0
 ```
 
 ### args
@@ -203,7 +203,7 @@ print(p.info())      // Alice HP: 80
 var.add = -> {
     return args[0] + args[1]
 }
-print(add(3, 4))     // 7
+print(add(3, 4))     // 7.0
 
 var.sum = -> {
     var.total = 0
@@ -252,9 +252,9 @@ var.x = 10
 var.fn = -> {
     return x + 1     // 捕获外层的 x
 }
-print(fn())          // 11
+print(fn())          // 11.0
 x = 20
-print(fn())          // 21（共享引用，值已更新）
+print(fn())          // 21.0（共享引用，值已更新）
 ```
 
 ### 异步（async / await）
@@ -266,7 +266,7 @@ var.x = 10
 var.p = async {
     return x + 1     // 闭包捕获外层 x；在 worker 线程执行
 }
-var.r = await p      // 阻塞直到完成 → 11
+var.r = await p      // 阻塞直到完成 → 11.0
 ```
 
 实现保证：

@@ -46,7 +46,7 @@ client.name = 'A'   // 写入触发 listener
 var.add = -> {
     return args[0] + args[1]
 }
-print(add(3, 4))    // 7
+print(add(3, 4))    // 7.0
 ```
 
 ### 类系统

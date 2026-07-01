@@ -25,7 +25,7 @@ print(greet('World'))       // Hello, World!
 var.add = -> {
     return args[0] + args[1]
 }
-print(add(3, 4))            // 7
+print(add(3, 4))            // 7.0
 ```
 
 ## 函数作为一等公民
@@ -40,7 +40,7 @@ var.apply = -> {
 }
 
 var.double = -> { return args[0] * 2 }
-print(apply(double, 5))     // 10
+print(apply(double, 5))     // 10.0
 ```
 
 从函数中返回函数：
@@ -54,7 +54,7 @@ var.multiplier = -> {
 }
 
 val.triple = multiplier(3)
-print(triple(10))           // 30
+print(triple(10))           // 30.0
 ```
 
 ## 闭包与作用域捕获
@@ -71,9 +71,9 @@ var.counter = -> {
 }
 
 val.next = counter()
-print(next())    // 1
-print(next())    // 2
-print(next())    // 3
+print(next())    // 1.0
+print(next())    // 2.0
+print(next())    // 3.0
 ```
 
 ## 立即调用函数
@@ -84,7 +84,7 @@ print(next())    // 3
 val.result = (-> {
     return 42
 })()
-print(result)    // 42
+print(result)    // 42.0
 ```
 
 ## 递归
@@ -98,7 +98,7 @@ var.factorial = -> {
     }
     return args[0] * factorial(args[0] - 1)
 }
-print(factorial(5))    // 120
+print(factorial(5))    // 120.0
 ```
 
 ```aria
@@ -108,7 +108,7 @@ var.fib = -> {
     }
     return fib(args[0] - 1) + fib(args[0] - 2)
 }
-print(fib(10))    // 55
+print(fib(10))    // 55.0
 ```
 
 ## 高阶函数
@@ -146,9 +146,9 @@ val.sum = list.reduce(-> { return args[0] + args[1] }, 0)
 ```aria
 val.list = ['a', 'b', 'c']
 list.forEach(-> { println(args[1] + ': ' + args[0]) })
-// 0: a
-// 1: b
-// 2: c
+// 0.0: a
+// 1.0: b
+// 2.0: c
 ```
 
 `find(fn)` — 返回第一个满足条件的元素，未找到返回 `none`：
@@ -207,7 +207,7 @@ val.str = list.join(' ')
 // str = 'hello world'
 
 val.csv = [1, 2, 3].join(',')
-// csv = '1,2,3'
+// csv = '1.0,2.0,3.0'
 ```
 
 ### 字典高阶函数
@@ -218,7 +218,7 @@ val.csv = [1, 2, 3].join(',')
 val.map = {'name': 'Alice', 'age': 30}
 map.forEach(-> { println(args[0] + ' = ' + args[1]) })
 // name = Alice
-// age = 30
+// age = 30.0
 ```
 
 `filter(fn)` — 保留 `fn(key, value)` 返回 `true` 的键值对，返回新字典：

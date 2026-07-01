@@ -257,7 +257,7 @@ val.result = template.render("Hello, {name}! Age: {age}", {
     "name": "Alice",
     "age": 25
 })
-// result = "Hello, Alice! Age: 25"
+// result = "Hello, Alice! Age: 25.0"
 ```
 
 ---
@@ -306,7 +306,7 @@ val.info = fs.info("test.txt")     // {size: 11, isDir: false, ...}
 
 ```aria
 val.resp = net.get("https://api.example.com/data")
-println(resp.status)  // 200
+println(resp.status)  // 200.0
 println(resp.body)
 
 val.resp2 = net.post("https://api.example.com/data", '{"key":"value"}', {
@@ -399,7 +399,7 @@ db.insert(conn, "users", {"name": "Alice", "age": 25})
 db.insert(conn, "users", {"name": "Bob", "age": 30})
 
 val.rows = db.select(conn, "users", {"name": "Alice"})
-println(rows)  // [{id: 1, name: "Alice", age: 25}]
+println(rows)  // [{id: 1.0, name: "Alice", age: 25.0}]
 
 db.update(conn, "users", {"age": 26}, {"name": "Alice"})
 db.delete(conn, "users", {"name": "Bob"})
@@ -444,7 +444,7 @@ db.close(conn)
 
 ```aria
 val.s = "Hello, World!"
-println(s.length())        // 13
+println(s.length())        // 13.0
 println(s.substring(0, 5)) // "Hello"
 println(s.toUpperCase())   // "HELLO, WORLD!"
 val.parts = s.split(", ")  // ["Hello", "World!"]
@@ -494,7 +494,7 @@ val.doubled = nums.map(-> { return args[0] * 2 })     // [6, 2, 8, 2, 10]
 val.evens = nums.filter(-> { return args[0] % 2 == 0 }) // [4]
 val.sum = nums.reduce(-> { return args[0] + args[1] }, 0) // 14
 val.found = nums.find(-> { return args[0] > 3 })       // 4
-println(nums.join("-"))  // "3-1-4-1-5"
+println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 ```
 
 ### 字典方法
@@ -529,7 +529,7 @@ println(nums.join("-"))  // "3-1-4-1-5"
 ```aria
 val.m = {"name": "Alice", "age": 25}
 println(m.keys())    // ["name", "age"]
-println(m.size())    // 2
+println(m.size())    // 2.0
 
 m.forEach(-> {
     println(args[0] + " = " + args[1])
@@ -555,7 +555,7 @@ val.filtered = m.filter(-> { return args[0] != "age" })
 val.pi = 3.14159
 println(pi.toFixed(2))  // "3.14"
 println(pi.round(3))    // 3.142
-println(pi.toInt())     // 3
+println(pi.toInt())     // 3.0
 ```
 
 ---
@@ -584,16 +584,25 @@ print(id)  // 550e8400-e29b-41d4-a716-446655440000
 |---------------------------|--------------|
 | `Range(start, end)`       | 创建范围，步长默认为 1 |
 | `Range(start, end, step)` | 创建范围，指定步长    |
+| `start..end`              | 字面量简写，等价 `Range(start, end)` |
+
+`start..end` 与 `Range(start, end)` 完全等价（左闭右开，步长 1），可直接用于 `for-in` 与 `~~`：
+
+```aria
+for i in 3..7 {
+    print(i)  // 3.0, 4.0, 5.0, 6.0（不含 7）
+}
+```
 
 ```aria
 val.r = Range(1, 10)
 for i in r {
-    print(i)  // 1, 2, 3, ..., 9
+    print(i)  // 1.0, 2.0, 3.0, ..., 9.0
 }
 
 val.r2 = Range(0, 10, 2)
 for i in r2 {
-    print(i)  // 0, 2, 4, 6, 8
+    print(i)  // 0.0, 2.0, 4.0, 6.0, 8.0
 }
 ```
 

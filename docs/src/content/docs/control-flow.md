@@ -71,10 +71,14 @@ for (item in [1, 2, 3]) {
 }
 ```
 
-遍历 Range：
+遍历 Range（`0..10` 是 `Range(0, 10)` 的字面量简写，左闭右开）：
 
 ```aria
 for (i in Range(0, 10)) {
+    print(i)
+}
+
+for (i in 0..10) {      // 等价写法，遍历 0.0 ~ 9.0
     print(i)
 }
 ```
@@ -105,7 +109,7 @@ var.sum = 0
 for (var.i = 1; i <= 100; i++) {
     sum += i
 }
-print(sum)    // 5050
+print(sum)    // 5050.0
 ```
 
 初始化段只声明一个循环变量；需要额外变量时在 `for` 之前声明。
@@ -190,7 +194,7 @@ for (i in Range(0, 10)) {
     if (i % 2 == 0) {
         next
     }
-    print(i)    // 只打印奇数：1, 3, 5, 7, 9
+    print(i)    // 只打印奇数：1.0, 3.0, 5.0, 7.0, 9.0
 }
 ```
 
@@ -203,7 +207,7 @@ var.max = -> {
     }
     return args[1]
 }
-print(max(3, 7))    // 7
+print(max(3, 7))    // 7.0
 ```
 
 不带表达式的 `return` 返回 `none`：

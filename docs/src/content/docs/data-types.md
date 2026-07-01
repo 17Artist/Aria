@@ -75,7 +75,7 @@ var.c = """
 ```aria
 var.name = 'World'
 var.msg = "Hello, {name}!"     // Hello, World!
-var.calc = "1 + 2 = {1 + 2}"  // 1 + 2 = 3
+var.calc = "1 + 2 = {1 + 2}"  // 1 + 2 = 3.0
 var.raw = 'Hello, {name}!'    // Hello, {name}!（单引号原样输出）
 ```
 
@@ -208,9 +208,9 @@ var.c = [1, 2, 3] - 0      // 移除索引 0 → [2, 3]
 ```aria
 var.list = [1, 2, 3]
 
-// 读取 — 按索引获取元素，越界返回 none
+// 读取 — 按索引获取元素，显式越界抛异常
 list[0]                     // 1
-list[5]                     // none（越界安全，不会报错）
+list[5]                     // 抛异常：列表索引越界（Shimmer 对齐）
 
 // 写入 — 设置指定索引的值
 list[0] = 10                // [10, 2, 3]
@@ -266,7 +266,7 @@ words.sortBy(-> { return args[0].length() })
 // → ['fig', 'apple', 'banana']
 
 // 拼接为字符串
-val.str = list.join(', ')  // '1, 2, 3, 4, 5'
+val.str = list.join(', ')  // '1.0, 2.0, 3.0, 4.0, 5.0'
 ```
 
 ---
@@ -404,7 +404,7 @@ type.isFunction(-> { })     // true
 
 ```aria
 type.toNumber('42')         // 42
-type.toString(42)           // '42'
+type.toString(42)           // '42.0'
 type.toBoolean(0)           // false
 type.toBoolean(1)           // true
 ```

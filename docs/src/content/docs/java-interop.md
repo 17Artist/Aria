@@ -57,8 +57,8 @@ val.Math = use('java.lang.Math')
 println(Math.PI)       // 3.141592653589793
 
 // 静态方法
-println(Math.abs(-42)) // 42
-println(Math.max(3, 7)) // 7
+println(Math.abs(-42)) // 42.0
+println(Math.max(3, 7)) // 7.0
 ```
 
 ---
@@ -71,7 +71,7 @@ val.list = ArrayList()
 list.add('a')
 list.add('b')
 list.add('c')
-println(list.size())  // 3
+println(list.size())  // 3.0
 println(list.get(1))  // "b"
 ```
 
@@ -89,7 +89,7 @@ println(list.get(1))  // "b"
 ```aria
 val.Date = use('java.util.Date')
 val.d = Date(0)
-println(d.time)  // 0 — 等价于 d.getTime()
+println(d.time)  // 0.0 — 等价于 d.getTime()
 ```
 
 支持 `getXxx()` 和 `isXxx()`（布尔属性）两种 getter 模式。
@@ -268,7 +268,7 @@ manager.registerStaticFunction("", "myGlobalFn", data -> {
 
 ```aria
 println(mylib.greet("Alice"))  // "Hello, Alice!"
-println(myGlobalFn())          // 42
+println(myGlobalFn())          // 42.0
 ```
 
 ### registerConstructor — 注册对象构造器
@@ -421,8 +421,8 @@ CallableManager.INSTANCE.registerStaticFunction(MathFunctions.class);
 脚本中两种命名空间都能用：
 
 ```aria
-println(Math.add(1, 2))       // 3
-println(math.multiply(3, 4))  // 12
+println(Math.add(1, 2))       // 3.0
+println(math.multiply(3, 4))  // 12.0
 ```
 
 规则：

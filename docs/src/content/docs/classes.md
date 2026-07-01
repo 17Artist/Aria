@@ -53,7 +53,7 @@ class Point {
 }
 
 val.p = Point(10, 20)
-print(p.x + p.y)    // 30
+print(p.x + p.y)    // 30.0
 ```
 
 ## 方法声明
@@ -71,7 +71,7 @@ class Calculator {
 }
 
 val.calc = Calculator()
-print(calc.add(3, 4) + calc.mul(5, 6))    // 37
+print(calc.add(3, 4) + calc.mul(5, 6))    // 37.0
 ```
 
 ## self 关键字
@@ -90,7 +90,7 @@ val.c = Counter()
 c.increment()
 c.increment()
 c.increment()
-print(c.count)    // 3
+print(c.count)    // 3.0
 ```
 
 ## 实例化
@@ -107,7 +107,7 @@ class Box {
 
 val.a = Box(10)
 val.b = Box(20)
-print(a.value + b.value)    // 30
+print(a.value + b.value)    // 30.0
 ```
 
 每个实例拥有独立的字段副本，互不影响。
@@ -278,6 +278,6 @@ val.c = Circle('red', 5)
 val.r = Rectangle('blue', 4, 6)
 
 print(c.describe())    // red shape, area = 78.53975
-print(r.describe())    // blue shape, area = 24
-print(c.radius)        // 5
+print(r.describe())    // blue shape, area = 24.0
+print(c.radius)        // 5.0
 ```
