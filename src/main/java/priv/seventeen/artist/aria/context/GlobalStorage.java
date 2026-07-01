@@ -57,6 +57,16 @@ public class GlobalStorage {
     public void setClientListener(ClientVariableListener listener) { this.clientListener = listener; }
     public void setServerListener(ServerVariableListener listener) { this.serverListener = listener; }
 
+    /** 移除单个 server 变量（下次读取将重新触发 onVariableGet / 回退默认值）。 */
+    public void removeServerVariable(VariableKey key) {
+        serverVariables.remove(key);
+    }
+
+    /** 移除所有名字以 {@code prefix} 开头的 server 变量。 */
+    public void removeServerVariableStartWith(String prefix) {
+        serverVariables.keySet().removeIf(k -> k.getName().startsWith(prefix));
+    }
+
 
     public void putMeta(String key, Object value) { metadata.put(key, value); }
 
