@@ -115,4 +115,23 @@ public class ShimmerDivergenceProbeTest {
         // 未按 #9 复刻 Shimmer 漏 return bug：true + "123" = 124
         assertEquals(124.0, num("true + \"123\""), 1e-9);
     }
+
+    // ===== 括号吞掉(用户要求)：非函数值加括号 → 吞掉括号返回原值 =====
+    @Test void parenSwallowOnValue() throws AriaException {
+        assertEquals(5.0, num("5()"), 1e-9);            // 5() -> 5
+        assertEquals("hi", str("\"hi\"()"));            // "hi"() -> "hi"
+        assertEquals("ab", str("(\"a\" + \"b\")()"));   // 拼接后加括号 -> 原串
+    }
+    @Test void parenSwallowOnMember() throws AriaException {
+        // obj.field() 中 field 非函数 → 吞掉括号返回 obj.field（用户的 xxx.xxVariable() 场景）
+        assertEquals(7.0, num("class Box { var.v = 7 }\nvar.b = Box()\nreturn b.v()"), 1e-9);
+        assertTrue(bool("class Box { var.v = 7 }\nvar.b = Box()\nreturn b.v() == b.v"));
+    }
+
+    // ===== 字符串 == 内容比较(确认已是内容比,非引用比) =====
+    @Test void stringEqualityIsContentBased() throws AriaException {
+        assertTrue(bool("\"a\" + \"b\" == \"ab\""));
+        assertTrue(bool("var.x = \"ab\"\nvar.y = \"a\" + \"b\"\nreturn x == y"));
+        assertEquals(2.0, num("switch (\"b\") { case \"a\" { return 1 } case \"b\" { return 2 } }"), 1e-9);
+    }
 }

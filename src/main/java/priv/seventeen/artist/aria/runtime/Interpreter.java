@@ -865,7 +865,8 @@ public class Interpreter {
                                 for (int i = 0; i < argCount; i++) callArgs[i] = registers[argBase + i];
                                 registers[inst.dst] = jcm.newInstance(callArgs);
                             } else {
-                                registers[inst.dst] = NoneValue.NONE;
+                                // Shimmer 对齐(用户要求)：非函数值加括号 → 吞掉括号，返回原值
+                                registers[inst.dst] = callee;
                             }
                         } else {
                             // 尝试作为 ICallable 调用
@@ -873,7 +874,8 @@ public class Interpreter {
                                 registers[inst.dst] = ic.invoke(
                                         new InvocationData(context, null, registers, argBase, argCount));
                             } else {
-                                registers[inst.dst] = NoneValue.NONE;
+                                // Shimmer 对齐：非函数值加括号 → 吞掉括号，返回原值（5() -> 5，"x"() -> "x"）
+                                registers[inst.dst] = callee;
                             }
                         }
                         break;
@@ -958,7 +960,8 @@ public class Interpreter {
                         if (genericMethod != null) {
                             registers[inst.dst] = genericMethod.invoke(new InvocationData(context, obj, callArgs));
                         } else {
-                            registers[inst.dst] = NoneValue.NONE;
+                            // Shimmer 对齐(用户要求)：obj.field() 中 field 非函数 → 吞掉括号，返回 obj.field 的成员值
+                            registers[inst.dst] = memberOf(obj, methodName);
                         }
                         break;
                     }
@@ -1988,7 +1991,8 @@ public class Interpreter {
                             registers[inst.dst] = ic.invoke(
                                     new InvocationData(context, null, registers, argBase, argCount));
                         } else {
-                            registers[inst.dst] = NoneValue.NONE;
+                            // Shimmer 对齐：非函数值加括号 → 吞掉括号，返回原值
+                            registers[inst.dst] = callee;
                         }
                     }
                     case CALL_STATIC -> {
@@ -2326,6 +2330,18 @@ public class Interpreter {
         return BooleanValue.of(found);
     }
 
+    /** obj.name 的成员取值：用于"非函数括号后缀吞掉括号后返回原成员值"(obj.field() == obj.field)。 */
+    private static IValue<?> memberOf(IValue<?> obj, String name) {
+        if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
+            var f = cv.jvmValue().getFields().get(name);
+            if (f != null) return f.getValue();
+        } else if (obj instanceof ObjectValue<?> ov) {
+            Variable v = ov.jvmValue().getVariable(name);
+            if (v != null && v.ariaValue() != null) return v.ariaValue();
+        }
+        return NoneValue.NONE;
+    }
+
     /** `a instanceof B` 类型判断:脚本类沿继承链匹配;其它按类型名比较。 */
     private static IValue<?> evalInstanceof(IValue<?> obj, IValue<?> type) {
         boolean match = false;
@@ -2455,7 +2471,8 @@ public class Interpreter {
                     return execute(methodProg, callCtx).getValue();
                 }
             }
-            return NoneValue.NONE;
+            // Shimmer 对齐(用户要求)：obj.field() 中 field 非函数 → 吞掉括号，返回 obj.field 成员值
+            return memberOf(obj, methodName);
         }
 
         // ObjectValue — Java 对象或 IAriaObject
@@ -2479,7 +2496,8 @@ public class Interpreter {
             return callObjectFunction(objFunc, context, obj, callArgs);
         }
 
-        return NoneValue.NONE;
+        // Shimmer 对齐：非函数成员加括号 → 吞掉括号，返回成员值（无则 none）
+        return memberOf(obj, methodName);
     }
 
     /**
