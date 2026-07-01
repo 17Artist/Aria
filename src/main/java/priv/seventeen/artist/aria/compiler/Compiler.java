@@ -65,6 +65,19 @@ public class Compiler {
         labelCounter = 0;
 
         compileNode(root, -1);
+        // 隐式返回：顶层程序末尾若非 RETURN，补一条返回最后求值结果（与 compileLambda 的隐式返回一致）。
+        // 使裸表达式脚本（如 "10 + 5"、"screen.width / 2"）返回其值而非 none —— Shimmer 兼容、Ruby/Kotlin 式末表达式返回。
+        if (!instructions.isEmpty() && instructions.get(instructions.size() - 1).opcode != IROpCode.RETURN) {
+            int lastDst = -1;
+            for (int i = instructions.size() - 1; i >= 0; i--) {
+                IROpCode op = instructions.get(i).opcode;
+                if (op != IROpCode.NOP && op != IROpCode.POP_SCOPE && op != IROpCode.PUSH_SCOPE) {
+                    lastDst = instructions.get(i).dst;
+                    break;
+                }
+            }
+            emit(IRInstruction.of(IROpCode.RETURN, lastDst));
+        }
         IRProgram program = new IRProgram(name);
         program.setInstructions(instructions.toArray(new IRInstruction[0]));
         program.setConstants(constants.toArray(new IValue<?>[0]));
