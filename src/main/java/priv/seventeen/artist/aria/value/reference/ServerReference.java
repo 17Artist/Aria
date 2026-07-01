@@ -16,30 +16,49 @@
 
 package priv.seventeen.artist.aria.value.reference;
 
+import priv.seventeen.artist.aria.context.VariableKey;
 import priv.seventeen.artist.aria.context.listener.ServerVariableListener;
 import priv.seventeen.artist.aria.value.IValue;
 
+/**
+ * {@code server} 命名空间变量引用：脚本端只读，宿主经 {@link #forceSetValue} 推送值。
+ *
+ * <p>每次读取都回调 {@link ServerVariableListener#onVariableGet(VariableKey)} 并携带本变量的键：
+ * 回调返回非 {@code null} 即用其值（监听器即数据源）；返回 {@code null}（或无监听器）则返回已存储值
+ * （宿主推送模型：宿主异步刷新后 {@code forceSetValue} 写回）。无监听器时读取不再 NPE。
+ */
 public final class ServerReference implements IReference {
+
+    private final VariableKey key;
     private IValue<?> value;
     private final ServerVariableListener listener;
 
-    public ServerReference(IValue<?> value, ServerVariableListener listener) {
+    public ServerReference(VariableKey key, IValue<?> value, ServerVariableListener listener) {
+        this.key = key;
         this.value = value;
         this.listener = listener;
     }
 
     @Override
     public IValue<?> getValue() {
-        return listener.onVariableGet();
+        if (listener != null) {
+            IValue<?> provided = listener.onVariableGet(key);
+            if (provided != null) {
+                return provided;
+            }
+        }
+        return value;
     }
 
     @Override
     public IValue<?> setValue(IValue<?> value) {
+        // server 变量脚本端只读：忽略脚本写入（与原语义一致）
         return value;
     }
 
     @Override
     public IValue<?> forceSetValue(IValue<?> value) {
+        // 宿主推送：写回已知值，供 onVariableGet 返回 null 时读取
         this.value = value;
         return value;
     }

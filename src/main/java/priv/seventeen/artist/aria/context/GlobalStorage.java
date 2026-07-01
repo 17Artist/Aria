@@ -47,11 +47,11 @@ public class GlobalStorage {
     }
 
     public ClientReference getClientVariable(VariableKey key) {
-        return clientVariables.computeIfAbsent(key, k -> new ClientReference(NoneValue.NONE, clientListener));
+        return clientVariables.computeIfAbsent(key, k -> new ClientReference(k, NoneValue.NONE, clientListener));
     }
 
     public ServerReference getServerVariable(VariableKey key) {
-        return serverVariables.computeIfAbsent(key, k -> new ServerReference(NoneValue.NONE, serverListener));
+        return serverVariables.computeIfAbsent(key, k -> new ServerReference(k, NoneValue.NONE, serverListener));
     }
 
     public void setClientListener(ClientVariableListener listener) { this.clientListener = listener; }

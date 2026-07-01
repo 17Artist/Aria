@@ -16,9 +16,26 @@
 
 package priv.seventeen.artist.aria.context.listener;
 
+import priv.seventeen.artist.aria.context.VariableKey;
 import priv.seventeen.artist.aria.value.IValue;
 
+/**
+ * {@code server} 命名空间变量的读取监听：脚本每次读取 {@code server.xxx} 时回调，携带被读取的变量键。
+ *
+ * <p>返回值语义：
+ * <ul>
+ *   <li>返回<b>非 {@code null}</b> → 直接作为本次读取的值（"监听器即数据源"模式，宿主每次实时提供）。</li>
+ *   <li>返回 <b>{@code null}</b> → 使用该变量当前已存储的值（宿主推送模型：宿主异步刷新后经
+ *       {@link priv.seventeen.artist.aria.value.reference.ServerReference#forceSetValue} 写回，读取时拿到
+ *       上次已知值；本回调仅作"被读取"通知，可用于登记异步刷新）。</li>
+ * </ul>
+ */
 @FunctionalInterface
 public interface ServerVariableListener {
-    IValue<?> onVariableGet();
+
+    /**
+     * @param key 被读取的变量键
+     * @return 本次读取的值；返回 {@code null} 则回退到该变量已存储的值
+     */
+    IValue<?> onVariableGet(VariableKey key);
 }
