@@ -50,7 +50,8 @@ public final class StringValue extends IValue<String> {
     @Override public String jvmValue() { return value; }
     @Override public double numberValue() { return numericValue; }
     @Override public String stringValue() { return value; }
-    @Override public boolean booleanValue() { return value != null && !value.isEmpty(); }
+    // Shimmer 对齐：仅字面量 "true"(忽略大小写) 为真，"1"/"0"/"false"/"abc" 均为 false。
+    @Override public boolean booleanValue() { return Boolean.parseBoolean(value); }
     @Override public int typeID() { return 3; }
     @Override public boolean canMath() { return true; }
     @Override public boolean isBaseType() { return true; }

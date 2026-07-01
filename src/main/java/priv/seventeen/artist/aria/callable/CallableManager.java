@@ -174,12 +174,9 @@ public class CallableManager {
                 String handlerName = ann.value();
                 registerObjectFunction(clazz, handlerName, data -> {
                     try {
-                        Object target = null;
-                        // data.get(0) 是 self（ObjectValue 包装的对象）
-                        IValue<?> selfVal = data.get(0);
-                        if (selfVal instanceof ObjectValue<?> ov) {
-                            target = ov.jvmValue();
-                        }
+                        // self 经 data.getTarget() 传入(解包后的对象)；data 的 args 只含用户参数
+                        // （Interpreter.callObjectFunction 对 ObjectValue 接收者不再前插 self）。
+                        Object target = data.getTarget();
                         if (target == null) return NoneValue.NONE;
 
                         Object result = method.invoke(target, data);

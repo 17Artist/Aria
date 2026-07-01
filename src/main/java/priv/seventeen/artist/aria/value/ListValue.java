@@ -41,27 +41,24 @@ public final class ListValue extends IValue<List<IValue<?>>> {
 
     @Override
     protected IValue<?> addValue(IValue<?> other) {
-        List<IValue<?>> newList = new ArrayList<>(this.value);
+        // Shimmer 对齐：原地修改并返回 this（其它持有同一 list 引用处能读到新元素）。
         if (other instanceof ListValue lv) {
-            newList.addAll(lv.jvmValue());
+            this.value.addAll(lv.jvmValue());
         } else {
-            newList.add(other);
+            this.value.add(other);
         }
-        return new ListValue(newList);
+        return this;
     }
 
     @Override
     protected IValue<?> subValue(IValue<?> other) {
-        List<IValue<?>> newList = new ArrayList<>(this.value);
+        // Shimmer 对齐：原地删除并返回 this；list-number 按 |idx| 删（越界抛异常，与 Shimmer 一致）。
         if (other instanceof ListValue lv) {
-            newList.removeAll(lv.jvmValue());
+            this.value.removeAll(lv.jvmValue());
         } else if (other instanceof NumberValue nv) {
-            int idx = (int) nv.numberValue();
-            if (idx >= 0 && idx < newList.size()) {
-                newList.remove(idx);
-            }
+            this.value.remove(Math.abs((int) nv.numberValue()));
         }
-        return new ListValue(newList);
+        return this;
     }
 
     @Override

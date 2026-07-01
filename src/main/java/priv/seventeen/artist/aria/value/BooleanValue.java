@@ -43,6 +43,20 @@ public final class BooleanValue extends IValue<Boolean> {
     @Override public boolean canMath() { return true; }
     @Override public boolean isBaseType() { return true; }
 
+    // Shimmer 对齐：bool + 非数字 string 走字符串拼接（如 true + "abc" -> "trueabc"），否则数值相加。
+    @Override
+    protected IValue<?> addValue(IValue<?> other) {
+        if (other instanceof StringValue sv && !sv.canBeNumber()) {
+            return new StringValue(this.stringValue() + sv.stringValue());
+        }
+        return new NumberValue(this.numberValue() + other.numberValue());
+    }
+
+    @Override
+    protected IValue<?> subValue(IValue<?> other) {
+        return new NumberValue(this.numberValue() - other.numberValue());
+    }
+
     @Override
     public String toString() { return stringValue(); }
 

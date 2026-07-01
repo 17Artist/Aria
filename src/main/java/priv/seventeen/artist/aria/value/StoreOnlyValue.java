@@ -27,7 +27,7 @@ public final class StoreOnlyValue<T> extends IValue<T> {
     @Override public T jvmValue() { return value; }
     @Override public double numberValue() { return 0; }
     @Override public String stringValue() { return value != null ? value.toString() : "none"; }
-    @Override public boolean booleanValue() { return value != null; }
+    @Override public boolean booleanValue() { return false; }
     @Override public int typeID() { return 5; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }

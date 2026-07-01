@@ -208,15 +208,10 @@ public class AriaTest {
     void testDivisionByZero() {
         NumberValue a = new NumberValue(10);
         NumberValue zero = new NumberValue(0);
-        IValue<?> result = a.div(zero);
-        assertTrue(Double.isInfinite(result.numberValue())); // 10/0 = Infinity
-
-        NumberValue neg = new NumberValue(-5);
-        IValue<?> negResult = neg.div(zero);
-        assertTrue(Double.isInfinite(negResult.numberValue()) && negResult.numberValue() < 0); // -5/0 = -Infinity
-
-        IValue<?> zeroZero = zero.div(zero);
-        assertTrue(Double.isNaN(zeroZero.numberValue())); // 0/0 = NaN
+        // Shimmer 对齐：除零 -> 0（而非 Infinity/NaN）
+        assertEquals(0, a.div(zero).numberValue());
+        assertEquals(0, new NumberValue(-5).div(zero).numberValue());
+        assertEquals(0, zero.div(zero).numberValue());
     }
 
     @Test

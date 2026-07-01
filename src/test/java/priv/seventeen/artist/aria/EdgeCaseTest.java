@@ -227,7 +227,7 @@ public class EdgeCaseTest {
         IValue<?> result = eval("""
             return 10 / 0
             """);
-        assertTrue(Double.isInfinite(result.numberValue()));
+        assertEquals(0, result.numberValue()); // Shimmer 对齐：除零 -> 0
     }
 
 
@@ -261,7 +261,8 @@ public class EdgeCaseTest {
             val.c = a + b
             return a.size()
             """);
-        assertEquals(2.0, result.numberValue());
+        // Shimmer 对齐：list 加法【原地修改】，a 变为 [1,2,3,4]，size=4
+        assertEquals(4.0, result.numberValue());
     }
 
 

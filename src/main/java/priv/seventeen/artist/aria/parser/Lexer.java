@@ -393,26 +393,24 @@ public class Lexer {
         throw new CompileException("未闭合的三引号文本块", startLine, startCol);
     }
 
-    private char readEscapeSequence() throws CompileException {
-        int escLine = line;
-        int escCol = column;
+    private String readEscapeSequence() {
         advance(); // 跳过 '\'
         if (pos >= length) {
-            throw new CompileException("字符串末尾的无效转义", escLine, escCol);
+            return "\\"; // Shimmer 对齐：串尾裸反斜杠原样保留，不抛异常
         }
         char c = current();
         advance();
         return switch (c) {
-            case 'n'  -> '\n';
-            case 't'  -> '\t';
-            case 'r'  -> '\r';
-            case 'b'  -> '\b';
-            case 'f'  -> '\f';
-            case '\\' -> '\\';
-            case '\'' -> '\'';
-            case '"'  -> '"';
-            default -> throw new CompileException(
-                    "无效的转义字符: \\" + c, escLine, escCol);
+            case 'n'  -> "\n";
+            case 't'  -> "\t";
+            case 'r'  -> "\r";
+            case 'b'  -> "\b";
+            case 'f'  -> "\f";
+            case '\\' -> "\\";
+            case '\'' -> "'";
+            case '"'  -> "\"";
+            // Shimmer 对齐：未知转义宽容——保留反斜杠+原字符(如 \c -> "\c")，不抛 CompileException
+            default   -> "\\" + c;
         };
     }
 

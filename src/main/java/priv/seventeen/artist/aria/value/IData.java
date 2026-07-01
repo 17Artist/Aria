@@ -51,8 +51,7 @@ public sealed abstract class IData permits IValue, Variable, Namespace {
         IValue<?> right = other.ariaValue();
         if (left == null || right == null) return NoneValue.NONE;
         double r = right.numberValue();
-        if (r == 0) return new NumberValue(left.numberValue() > 0 ? Double.POSITIVE_INFINITY :
-                left.numberValue() < 0 ? Double.NEGATIVE_INFINITY : Double.NaN);
+        if (r == 0) return new NumberValue(0); // Shimmer 对齐：除零 -> 0（而非 Infinity/NaN）
         return new NumberValue(left.numberValue() / r);
     }
 
@@ -61,7 +60,7 @@ public sealed abstract class IData permits IValue, Variable, Namespace {
         IValue<?> right = other.ariaValue();
         if (left == null || right == null) return NoneValue.NONE;
         double r = right.numberValue();
-        if (r == 0) return new NumberValue(Double.NaN);
+        if (r == 0) return new NumberValue(0); // Shimmer 对齐：取余零 -> 0（而非 NaN）
         return new NumberValue(left.numberValue() % r);
     }
 

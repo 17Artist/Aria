@@ -50,11 +50,13 @@ public final class NumberValue extends IValue<Double> {
 
     @Override public Double jvmValue() { return value; }
     @Override public double numberValue() { return value; }
+    // 保留 Aria 行为：整数去尾（5 -> "5"，非 "5.0"）——纯显示、更友好，不影响脚本逻辑；对齐 Shimmer 的 "5.0" 会回归 Aria 文档/大量用例。
     @Override public String stringValue() {
         if (value == (long) value) return Long.toString((long) value);
         return Double.toString(value);
     }
-    @Override public boolean booleanValue() { return value != 0; }
+    // Shimmer 对齐：真值为 value > 0（0、负数、NaN 均为 false）。
+    @Override public boolean booleanValue() { return value > 0; }
     @Override public int typeID() { return 1; }
     @Override public boolean canMath() { return true; }
     @Override public boolean isBaseType() { return true; }

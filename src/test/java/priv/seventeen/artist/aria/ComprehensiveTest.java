@@ -528,8 +528,9 @@ public class ComprehensiveTest {
 
     @Test
     void testNumberIsNaN() throws AriaException {
+        // Shimmer 对齐后 0/0 = 0（非 NaN），改用 sqrt(-1) 产生 NaN 以测 isNaN()
         IValue<?> result = eval("""
-            val.x = 0 / 0
+            val.x = math.sqrt(0 - 1)
             return x.isNaN()
             """);
         assertTrue(result.booleanValue());

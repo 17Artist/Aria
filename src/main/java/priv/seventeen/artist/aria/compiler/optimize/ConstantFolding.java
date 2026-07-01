@@ -58,8 +58,8 @@ public class ConstantFolding {
                         case ADD, ADD_NUM -> l + r;
                         case SUB, SUB_NUM -> l - r;
                         case MUL, MUL_NUM -> l * r;
-                        case DIV, DIV_NUM -> r != 0 ? l / r : (l > 0 ? Double.POSITIVE_INFINITY : l < 0 ? Double.NEGATIVE_INFINITY : Double.NaN);
-                        case MOD, MOD_NUM -> r != 0 ? l % r : Double.NaN;
+                        case DIV, DIV_NUM -> r != 0 ? l / r : 0; // Shimmer 对齐：除零->0
+                        case MOD, MOD_NUM -> r != 0 ? l % r : 0; // Shimmer 对齐：取余零->0
                         default -> Double.NaN;
                     };
                     if (!Double.isNaN(result)) {

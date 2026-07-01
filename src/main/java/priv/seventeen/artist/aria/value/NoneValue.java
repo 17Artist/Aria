@@ -24,7 +24,8 @@ public final class NoneValue extends IValue<Object> {
 
     @Override public Object jvmValue() { return null; }
     @Override public double numberValue() { return 0; }
-    @Override public String stringValue() { return "none"; }
+    // Shimmer 对齐：none 字符串化为空串（避免 HUD/拼接冒出字面 "none"）。
+    @Override public String stringValue() { return ""; }
     @Override public boolean booleanValue() { return false; }
     @Override public int typeID() { return 0; }
     @Override public boolean canMath() { return true; }
@@ -34,7 +35,7 @@ public final class NoneValue extends IValue<Object> {
     protected IValue<?> addValue(IValue<?> other) { return other; }
 
     @Override
-    protected IValue<?> subValue(IValue<?> other) { return this; }
+    protected IValue<?> subValue(IValue<?> other) { return other; }
 
     @Override
     public String toString() { return "none"; }

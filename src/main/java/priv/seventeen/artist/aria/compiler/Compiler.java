@@ -256,6 +256,12 @@ public class Compiler {
     }
 
     private int compileBinary(BinaryExpr expr, int dst) {
+        // AND/OR：短路求值 + 结果规整为布尔（Shimmer 对齐）。必须在编译右操作数前拦截，
+        // 否则右操作数指令会被无条件发射→丧失短路。
+        BinaryExpr.BinaryOp binOp = expr.getOperator();
+        if (binOp == BinaryExpr.BinaryOp.AND || binOp == BinaryExpr.BinaryOp.OR) {
+            return compileLogical(expr, dst);
+        }
         int leftReg = compileNode(expr.getLeft(), -1);
         int rightReg = compileNode(expr.getRight(), -1);
         IROpCode op = switch (expr.getOperator()) {
@@ -296,6 +302,34 @@ public class Compiler {
         } else {
             emit(IRInstruction.of(op, dst, leftReg, rightReg), expr.getLocation());
         }
+        return dst;
+    }
+
+    /**
+     * 编译 {@code &&} / {@code ||}：<b>短路求值 + 结果规整为布尔</b>（Shimmer 对齐）。
+     * <pre>
+     *   a && b:  eval a; if(!a) -> dst=FALSE; else eval b; dst=bool(b)
+     *   a || b:  eval a; if( a) -> dst=TRUE ; else eval b; dst=bool(b)
+     * </pre>
+     * 右操作数指令在跳转之后才发射，故左侧决定结果时不会执行右侧（真短路）。
+     * 用双 NOT 把右操作数值规整为 BooleanValue（NOT 产 {@code BooleanValue.of(!x)}，再 NOT 得 {@code bool(x)}）。
+     */
+    private int compileLogical(BinaryExpr expr, int dst) {
+        boolean isAnd = expr.getOperator() == BinaryExpr.BinaryOp.AND;
+        if (dst < 0) dst = nextRegister();
+        int leftReg = compileNode(expr.getLeft(), -1);
+        int jShort = currentPC();
+        emit(IRInstruction.of(isAnd ? IROpCode.JUMP_IF_FALSE : IROpCode.JUMP_IF_TRUE, leftReg, 0), expr.getLocation());
+        // 未短路：dst = 右操作数的布尔值
+        int rightReg = compileNode(expr.getRight(), -1);
+        emit(IRInstruction.of(IROpCode.NOT, dst, rightReg), expr.getLocation());
+        emit(IRInstruction.of(IROpCode.NOT, dst, dst), expr.getLocation());
+        int jEnd = currentPC();
+        emit(IRInstruction.of(IROpCode.JUMP, 0), expr.getLocation());
+        // 短路：AND->FALSE, OR->TRUE
+        patchJump(jShort, currentPC());
+        emit(IRInstruction.of(isAnd ? IROpCode.LOAD_FALSE : IROpCode.LOAD_TRUE, dst), expr.getLocation());
+        patchJump(jEnd, currentPC());
         return dst;
     }
 

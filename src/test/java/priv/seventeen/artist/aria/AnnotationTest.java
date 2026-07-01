@@ -25,6 +25,7 @@ import priv.seventeen.artist.aria.context.Context;
 import priv.seventeen.artist.aria.exception.AriaException;
 import priv.seventeen.artist.aria.value.FunctionValue;
 import priv.seventeen.artist.aria.value.IValue;
+import priv.seventeen.artist.aria.value.NoneValue;
 import priv.seventeen.artist.aria.value.NumberValue;
 
 import java.util.ArrayList;
@@ -244,7 +245,8 @@ class AnnotationTest {
         IValue<?> noneValue = registry.getAll().stream()
                 .filter(t -> "missing".equals(t.annotation().name()))
                 .findFirst().orElseThrow().value();
-        assertTrue(noneValue == null || "none".equals(noneValue.stringValue()),
+        // Shimmer 对齐后 NoneValue.stringValue()="" ，改用类型识别 none
+        assertTrue(noneValue == null || noneValue instanceof NoneValue,
                 "none 字面量应被识别");
     }
 }

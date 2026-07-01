@@ -419,9 +419,7 @@ public class Interpreter {
                     case DIV: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = rn.value == 0
-                                    ? (ln.value > 0 ? Double.POSITIVE_INFINITY : ln.value < 0 ? Double.NEGATIVE_INFINITY : Double.NaN)
-                                    : ln.value / rn.value;
+                            double r = rn.value == 0 ? 0 : ln.value / rn.value; // Shimmer 对齐：除零->0
                             IValue<?> dst = registers[inst.dst];
                             if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
                             else { registers[inst.dst] = new NumberValue(r); }
@@ -431,7 +429,7 @@ public class Interpreter {
                     case MOD: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = ln.value % rn.value;
+                            double r = rn.value == 0 ? 0 : ln.value % rn.value; // Shimmer 对齐：取余零->0
                             IValue<?> dst = registers[inst.dst];
                             if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
                             else { registers[inst.dst] = new NumberValue(r); }
@@ -477,10 +475,7 @@ public class Interpreter {
                     }
                     case DIV_NUM: {
                         double divisor = registers[inst.b].numberValue();
-                        double r = divisor == 0
-                                ? (registers[inst.a].numberValue() > 0 ? Double.POSITIVE_INFINITY
-                                : registers[inst.a].numberValue() < 0 ? Double.NEGATIVE_INFINITY : Double.NaN)
-                                : registers[inst.a].numberValue() / divisor;
+                        double r = divisor == 0 ? 0 : registers[inst.a].numberValue() / divisor; // Shimmer 对齐：除零->0
                         IValue<?> dst = registers[inst.dst];
                         if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
                         else { registers[inst.dst] = new NumberValue(r); }
@@ -889,19 +884,11 @@ public class Interpreter {
                         // 快速路径：cache 命中且 receiver 类型一致时跳过所有 instanceof 检查。
                         // 必须校验 obj.getClass()——cache 按 receiver 类型解析的对象函数，
                         // 否则多态调用点会复用上一个类的方法导致调错。
-                        if (inst.cache instanceof MethodCache mc && mc.recvClass() == obj.getClass()) {
+                        if (inst.cache instanceof MethodCache mc && mc.recvClass() == receiverClass(obj)) {
                             ICallable cachedFunc = mc.fn();
-                            IValue<?>[] objCallArgs;
-                            if (argCount == 0) {
-                                objCallArgs = new IValue<?>[]{ obj };
-                            } else if (argCount == 1) {
-                                objCallArgs = new IValue<?>[]{ obj, registers[argBase] };
-                            } else {
-                                objCallArgs = new IValue<?>[argCount + 1];
-                                objCallArgs[0] = obj;
-                                for (int i = 0; i < argCount; i++) objCallArgs[i + 1] = registers[argBase + i];
-                            }
-                            registers[inst.dst] = cachedFunc.invoke(new InvocationData(context, obj, objCallArgs));
+                            IValue<?>[] fastArgs = new IValue<?>[argCount];
+                            for (int i = 0; i < argCount; i++) fastArgs[i] = registers[argBase + i];
+                            registers[inst.dst] = callObjectFunction(cachedFunc, context, obj, fastArgs);
                             break;
                         }
 
@@ -955,21 +942,10 @@ public class Interpreter {
 
                         // 尝试 CallableManager 对象函数注册表（带缓存）
                         ICallable objFunc = CallableManager.INSTANCE
-                                .getObjectFunction(obj.getClass(), methodName);
+                                .getObjectFunction(receiverClass(obj), methodName);
                         if (objFunc != null) {
-                            inst.cache = new MethodCache(obj.getClass(), objFunc);
-                            // 对象函数约定：args[0] = self(obj), args[1..] = 用户参数
-                            IValue<?>[] objCallArgs;
-                            if (argCount == 0) {
-                                objCallArgs = new IValue<?>[]{ obj };
-                            } else if (argCount == 1) {
-                                objCallArgs = new IValue<?>[]{ obj, callArgs[0] };
-                            } else {
-                                objCallArgs = new IValue<?>[argCount + 1];
-                                objCallArgs[0] = obj;
-                                System.arraycopy(callArgs, 0, objCallArgs, 1, argCount);
-                            }
-                            registers[inst.dst] = objFunc.invoke(new InvocationData(context, obj, objCallArgs));
+                            inst.cache = new MethodCache(receiverClass(obj), objFunc);
+                            registers[inst.dst] = callObjectFunction(objFunc, context, obj, callArgs);
                             break;
                         }
 
@@ -1950,12 +1926,7 @@ public class Interpreter {
                     case DIV -> {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            if (rn.value == 0) {
-                                registers[inst.dst] = new NumberValue(ln.value > 0 ? Double.POSITIVE_INFINITY :
-                                        ln.value < 0 ? Double.NEGATIVE_INFINITY : Double.NaN);
-                            } else {
-                                registers[inst.dst] = new NumberValue(ln.value / rn.value);
-                            }
+                            registers[inst.dst] = new NumberValue(rn.value == 0 ? 0 : ln.value / rn.value); // Shimmer 对齐：除零->0
                         } else { registers[inst.dst] = la.div(ra); }
                     }
                     case LE -> registers[inst.dst] = registers[inst.a].le(registers[inst.b]);
@@ -2493,15 +2464,44 @@ public class Interpreter {
 
         // 其他类型 — CallableManager 对象函数
         ICallable objFunc = CallableManager.INSTANCE
-                .getObjectFunction(obj.getClass(), methodName);
+                .getObjectFunction(receiverClass(obj), methodName);
         if (objFunc != null) {
-            IValue<?>[] objCallArgs = new IValue<?>[argCount + 1];
-            objCallArgs[0] = obj;
-            System.arraycopy(callArgs, 0, objCallArgs, 1, argCount);
-            return objFunc.invoke(new InvocationData(context, obj, objCallArgs));
+            return callObjectFunction(objFunc, context, obj, callArgs);
         }
 
         return NoneValue.NONE;
+    }
+
+    /**
+     * 方法分派用的接收者类：若接收者是 {@link ObjectValue} 包装(IAriaObject 等)，用其【被包装对象的真实类】查找
+     * CallableManager 里注册的对象函数（否则 obj.getClass() 恒为 ObjectValue，永远查不到注册在具体类下的方法）。
+     * 非包装值(StringValue/ListValue 等 stdlib 值本身即注册类)直接用其类，行为不变。
+     */
+    private static Class<?> receiverClass(IValue<?> obj) {
+        if (obj instanceof ObjectValue<?> ov && ov.jvmValue() != null) {
+            return ov.jvmValue().getClass();
+        }
+        return obj.getClass();
+    }
+
+    /**
+     * 调用对象函数并构造 InvocationData。两种约定：
+     * <ul>
+     *   <li><b>{@link ObjectValue} 包装对象</b>(IAriaObject 等)：self 经 <b>target</b> 传入(解包后的对象)，
+     *       {@code args} 只含【用户参数】——与宿主注册的实例方法/target 函数约定一致(它们用 getTarget()/this 取 self、
+     *       从 args[0] 读第一个用户参数)。</li>
+     *   <li><b>非包装值</b>(String/List/Map 等 stdlib 值)：保持既有约定，self 前插为 {@code args[0]}、target=obj。</li>
+     * </ul>
+     */
+    private static IValue<?> callObjectFunction(ICallable objFunc, Context ctx, IValue<?> obj, IValue<?>[] callArgs)
+            throws AriaException {
+        if (obj instanceof ObjectValue<?> ov) {
+            return objFunc.invoke(new InvocationData(ctx, ov.jvmValue(), callArgs));
+        }
+        IValue<?>[] objCallArgs = new IValue<?>[callArgs.length + 1];
+        objCallArgs[0] = obj;
+        System.arraycopy(callArgs, 0, objCallArgs, 1, callArgs.length);
+        return objFunc.invoke(new InvocationData(ctx, obj, objCallArgs));
     }
 
     private IValue<?> constructScriptClass(ClassDefinition cd, IValue<?>[] callArgs,
@@ -2679,12 +2679,11 @@ public class Interpreter {
                 case MUL, MUL_NUM -> regs[inst.dst] = regs[inst.a] * regs[inst.b];
                 case DIV, DIV_NUM -> {
                     double r = regs[inst.b];
-                    regs[inst.dst] = r == 0 ? (regs[inst.a] > 0 ? Double.POSITIVE_INFINITY :
-                            regs[inst.a] < 0 ? Double.NEGATIVE_INFINITY : Double.NaN) : regs[inst.a] / r;
+                    regs[inst.dst] = r == 0 ? 0 : regs[inst.a] / r; // Shimmer 对齐：除零->0
                 }
                 case MOD, MOD_NUM -> {
                     double r = regs[inst.b];
-                    regs[inst.dst] = r == 0 ? Double.NaN : regs[inst.a] % r;
+                    regs[inst.dst] = r == 0 ? 0 : regs[inst.a] % r; // Shimmer 对齐：取余零->0
                 }
                 case NEG -> regs[inst.dst] = -regs[inst.a];
                 case INC -> regs[inst.dst] = regs[inst.a] + 1;
@@ -2857,12 +2856,11 @@ public class Interpreter {
                 case MUL, MUL_NUM -> regs[inst.dst] = regs[inst.a] * regs[inst.b];
                 case DIV, DIV_NUM -> {
                     double r = regs[inst.b];
-                    regs[inst.dst] = r == 0 ? (regs[inst.a] > 0 ? Double.POSITIVE_INFINITY :
-                            regs[inst.a] < 0 ? Double.NEGATIVE_INFINITY : Double.NaN) : regs[inst.a] / r;
+                    regs[inst.dst] = r == 0 ? 0 : regs[inst.a] / r; // Shimmer 对齐：除零->0
                 }
                 case MOD, MOD_NUM -> {
                     double r = regs[inst.b];
-                    regs[inst.dst] = r == 0 ? Double.NaN : regs[inst.a] % r;
+                    regs[inst.dst] = r == 0 ? 0 : regs[inst.a] % r; // Shimmer 对齐：取余零->0
                 }
                 case NEG -> regs[inst.dst] = -regs[inst.a];
                 case INC -> regs[inst.dst] = regs[inst.a] + 1;

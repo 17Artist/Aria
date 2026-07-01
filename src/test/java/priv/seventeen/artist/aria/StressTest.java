@@ -297,14 +297,13 @@ public class StressTest {
 
     @Test
     void testLogicalShortCircuitAnd() throws AriaException {
-        // Aria 的 && 编译时两侧操作数均会求值（无编译期短路优化）
-        // 因此右侧 IIFE 会被执行，var.x 被设为 1
+        // Shimmer 对齐：&& 短路——左为 false 则右侧 IIFE 不执行，var.x 保持 0
         IValue<?> result = eval("""
             var.x = 0
             var.r = false && (-> { var.x = 1; return true })()
             return var.x
             """);
-        assertEquals(1.0, result.numberValue());
+        assertEquals(0.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.x = 0
             var.r = true && (-> { var.x = 2; return true })()
@@ -315,14 +314,13 @@ public class StressTest {
 
     @Test
     void testLogicalShortCircuitOr() throws AriaException {
-        // Aria 的 || 编译时两侧操作数均会求值（无编译期短路优化）
-        // 因此右侧 IIFE 会被执行，var.x 被设为 1
+        // Shimmer 对齐：|| 短路——左为 true 则右侧 IIFE 不执行，var.x 保持 0
         IValue<?> result = eval("""
             var.x = 0
             var.r = true || (-> { var.x = 1; return false })()
             return var.x
             """);
-        assertEquals(1.0, result.numberValue());
+        assertEquals(0.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.x = 0
             var.r = false || (-> { var.x = 3; return true })()

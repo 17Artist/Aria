@@ -41,29 +41,28 @@ public final class MapValue extends IValue<Map<IValue<?>, IValue<?>>> {
 
     @Override
     protected IValue<?> addValue(IValue<?> other) {
+        // Shimmer 对齐：原地合并并返回 this。
         if (other instanceof MapValue mv) {
-            Map<IValue<?>, IValue<?>> newMap = new LinkedHashMap<>(this.value);
-            newMap.putAll(mv.jvmValue());
-            return new MapValue(newMap);
+            this.value.putAll(mv.jvmValue());
         }
         return this;
     }
 
     @Override
     protected IValue<?> subValue(IValue<?> other) {
-        Map<IValue<?>, IValue<?>> newMap = new LinkedHashMap<>(this.value);
+        // Shimmer 对齐：原地删除并返回 this。
         if (other instanceof MapValue mv) {
             for (IValue<?> key : mv.jvmValue().keySet()) {
-                newMap.remove(key);
+                this.value.remove(key);
             }
         } else if (other instanceof ListValue lv) {
             for (IValue<?> key : lv.jvmValue()) {
-                newMap.remove(key);
+                this.value.remove(key);
             }
         } else {
-            newMap.remove(other);
+            this.value.remove(other);
         }
-        return new MapValue(newMap);
+        return this;
     }
 
     @Override
