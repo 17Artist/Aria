@@ -428,7 +428,7 @@ println(math.multiply(3, 4))  // 12.0
 规则：
 - `@AriaNamespace` 标注在类上，`value` 是命名空间名数组，第一个为主名，其余为别名
 - `@AriaInvokeHandler` 标注在 `public static` 方法上，参数必须是 `InvocationData`
-- 返回值自动包装：`IValue` 直接返回，`Double`/`Number` → `NumberValue`，`String` → `StringValue`，`Boolean` → `BooleanValue`，`null` → `NoneValue`
+- 返回值自动包装：`IValue` 直接返回，`Double`/`Number` → `NumberValue`，`String` → `StringValue`，`Boolean` → `BooleanValue`，`List` → `ListValue`，`Map` → `MapValue`，`IAriaObject` → `ObjectValue`，其它对象 → `StoreOnlyValue`（仍可作为对象继续调用方法），`null` → `NoneValue`
 - 内部使用 `MethodHandle` 调用，性能接近直接方法调用
 
 ### aliasNamespace — 命名空间别名

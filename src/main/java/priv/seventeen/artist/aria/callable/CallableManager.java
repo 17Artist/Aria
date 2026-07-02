@@ -80,13 +80,10 @@ public class CallableManager {
                 .put(functionName, data -> {
                     try {
                         Object result = finalHandle.invokeExact(data);
-                        if (result instanceof IValue<?> iv) return iv;
-                        if (result instanceof Double d) return new NumberValue(d);
-                        if (result instanceof Number n) return new NumberValue(n.doubleValue());
-                        if (result instanceof String s) return new StringValue(s);
-                        if (result instanceof Boolean b) return BooleanValue.of(b);
-                        if (result == null) return NoneValue.NONE;
-                        return NoneValue.NONE;
+                        // 对齐对象函数/Shimmer：List→ListValue、Map→MapValue、IAriaObject→ObjectValue、其余对象→StoreOnlyValue
+                        // (原内联表把非基本类型一律吞成 NONE，导致 Tip.getText/Potion.getActivePotionEffects/
+                        //  Player.getOnlinePlayersDict/getMainHandItem 等返回复杂类型的静态函数全部失效)
+                        return wrapNativeResult(result);
                     } catch (AriaRuntimeException e) {
                         throw e;
                     } catch (Throwable e) {
@@ -122,13 +119,7 @@ public class CallableManager {
                 .put(functionName, data -> {
                     try {
                         Object result = finalMethod.invoke(null, data);
-                        if (result instanceof IValue<?> iv) return iv;
-                        if (result instanceof Double d) return new NumberValue(d);
-                        if (result instanceof Number n) return new NumberValue(n.doubleValue());
-                        if (result instanceof String s) return new StringValue(s);
-                        if (result instanceof Boolean b) return BooleanValue.of(b);
-                        if (result == null) return NoneValue.NONE;
-                        return NoneValue.NONE;
+                        return wrapNativeResult(result); // 同 registerStaticFunction：复杂返回类型不再吞成 NONE
                     } catch (java.lang.reflect.InvocationTargetException e) {
                         Throwable cause = e.getCause();
                         if (cause instanceof AriaRuntimeException are) throw are;
@@ -179,14 +170,7 @@ public class CallableManager {
                         Object target = data.getTarget();
                         if (target == null) return NoneValue.NONE;
 
-                        Object result = method.invoke(target, data);
-                        if (result instanceof IValue<?> iv) return iv;
-                        if (result instanceof Double d) return new NumberValue(d);
-                        if (result instanceof Number n) return new NumberValue(n.doubleValue());
-                        if (result instanceof String s) return new StringValue(s);
-                        if (result instanceof Boolean b) return BooleanValue.of(b);
-                        if (result == null) return NoneValue.NONE;
-                        return NoneValue.NONE;
+                        return wrapNativeResult(method.invoke(target, data));
                     } catch (Exception e) {
                         throw new AriaRuntimeException("Failed to invoke " + handlerName + ": " + e.getMessage());
                     }
@@ -195,6 +179,35 @@ public class CallableManager {
         }
     }
 
+
+    /**
+     * 对象函数 Java 返回值 → 脚本值(对齐 Shimmer 的 {@code CachedCallable} 转换表)。
+     * 关键:{@link IAriaObject}→{@link ObjectValue}(此前缺失,导致 {@code @AriaInvokeHandler} 返回 IAriaObject
+     * 的方法如 {@code getParent} 落到 NONE → {@code self.parent()} 为空);{@link List}/{@link Map} 递归包装;
+     * 其余非 IValue 对象兜底 {@link StoreOnlyValue}(而非 NONE)。
+     */
+    public static IValue<?> wrapNativeResult(Object result) {
+        if (result == null) return NoneValue.NONE;
+        if (result instanceof IValue<?> iv) return iv;
+        if (result instanceof IAriaObject iao) return new ObjectValue<>(iao);
+        if (result instanceof String s) return new StringValue(s);
+        if (result instanceof Character c) return new StringValue(String.valueOf(c));
+        if (result instanceof Boolean b) return BooleanValue.of(b);
+        if (result instanceof Number n) return new NumberValue(n.doubleValue());
+        if (result instanceof List<?> list) {
+            List<IValue<?>> out = new ArrayList<>(list.size());
+            for (Object e : list) out.add(wrapNativeResult(e));
+            return new ListValue(out);
+        }
+        if (result instanceof Map<?, ?> map) {
+            Map<IValue<?>, IValue<?>> out = new java.util.LinkedHashMap<>();
+            for (Map.Entry<?, ?> en : map.entrySet()) {
+                out.put(wrapNativeResult(en.getKey()), wrapNativeResult(en.getValue()));
+            }
+            return new MapValue(out);
+        }
+        return new StoreOnlyValue<>(result);
+    }
 
     public boolean hasStaticNamespace(String namespace) {
         return staticFunctions.containsKey(namespace);

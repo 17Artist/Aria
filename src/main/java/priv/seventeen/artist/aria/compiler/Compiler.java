@@ -590,7 +590,9 @@ public class Compiler {
             }
 
             // 命名空间静态调用: math.sin(x), console.log(x)
-            if (obj instanceof IdentifierExpr id) {
+            // 例外："self" 是自身对象(LOAD_SELF)、不是命名空间 → self.method() 必须走下方的普通方法调用
+            // (否则被编成 CALL_STATIC "self.method" → 查不到命名空间 → NONE，所有 self.xxx() 皆失效)。
+            if (obj instanceof IdentifierExpr id && !"self".equals(id.getName())) {
                 String ns = id.getName();
                 IRInstruction inst = IRInstruction.of(IROpCode.CALL_STATIC, dst, argBase, args.size());
                 inst.name = ns + "." + method;

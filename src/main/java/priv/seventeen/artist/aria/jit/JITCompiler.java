@@ -20,6 +20,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import priv.seventeen.artist.aria.callable.CallableManager;
+import priv.seventeen.artist.aria.callable.CallableWithInvoker;
 import priv.seventeen.artist.aria.callable.ICallable;
 import priv.seventeen.artist.aria.callable.InvocationData;
 import priv.seventeen.artist.aria.compiler.ir.IRInstruction;
@@ -33,6 +34,7 @@ import priv.seventeen.artist.aria.object.IAriaObject;
 import priv.seventeen.artist.aria.object.RangeObject;
 import priv.seventeen.artist.aria.runtime.Interpreter;
 import priv.seventeen.artist.aria.runtime.Result;
+import priv.seventeen.artist.aria.exception.AriaException;
 import priv.seventeen.artist.aria.value.*;
 import priv.seventeen.artist.aria.value.reference.IReference;
 import priv.seventeen.artist.aria.value.reference.VariableReference;
@@ -729,6 +731,12 @@ public class JITCompiler {
         return ct;
     }
 
+    /** 纯数值 fast 路径可直接内联的静态函数(emitFastStaticCall 覆盖)。其它命名空间静态函数会被兜底成 0，必须走通用路径。 */
+    private static final java.util.Set<String> FAST_INLINE_STATICS = java.util.Set.of(
+            "math.sin", "math.cos", "math.tan", "math.abs", "math.floor", "math.ceil",
+            "math.sqrt", "math.log", "math.round", "math.pow", "math.min", "math.max",
+            "math.random", "math.PI", "math.E");
+
     private boolean isNumericOnly(IRInstruction[] code) {
         for (IRInstruction inst : code) {
             switch (inst.opcode) {
@@ -739,6 +747,14 @@ public class JITCompiler {
                 case NEW_LIST, NEW_MAP:
                 case CALL_METHOD, SET_INDEX:
                     return false;
+                case CALL_STATIC:
+                    // 命名空间静态函数(如 Time.currentTime、Player.*)在纯数值 fast 路径无法内联 →
+                    // emitFastStaticCall 兜底成 0。仅放行可内联的 math.*；其余带命名空间的静态调用改走通用(正确)路径。
+                    // 裸名调用(无 '.')不拦——组递归/var-lambda 由 callTargets/detectSimpleUnaryLambda 各自处理。
+                    if (inst.name != null && inst.name.indexOf('.') >= 0 && !FAST_INLINE_STATICS.contains(inst.name)) {
+                        return false;
+                    }
+                    break;
                 // NEW_FUNCTION 产出一个函数对象（非数值），后续 STORE_VAR 会把它写到 var.x。
                 // fastDoubleVars / fastLongVars 把寄存器当作 double / long 处理，NEW_FUNCTION
                 // 被跳过后寄存器保持 0，STORE_VAR 会把 var.x 写成数字 0，函数值丢失。
@@ -2362,11 +2378,14 @@ public class JITCompiler {
                     Label endGetIndex = new Label();
                     mv.visitJumpInsn(GOTO, endGetIndex);
                     mv.visitLabel(notSmallMap);
-                    // 慢速路径：rtGetIndex
+                    // 慢速路径：rtGetIndex(obj, idx, ctx, forIn) —— ctx 用于 IAriaObject 元素惰性求值；
+                    // forIn(=inst.c)=1 时 Map 走 mapEntryAt 迭代(对齐解释器；原 JIT 忽略哨兵 → for(k,v in map) 错乱)
                     mv.visitVarInsn(ALOAD, regToLocal[inst.b]); // idx
+                    mv.visitVarInsn(ALOAD, ctxLocal);           // ctx
+                    emitIntConst(mv, inst.c);                   // forIn 哨兵
                     mv.visitMethodInsn(INVOKESTATIC,
                             "priv/seventeen/artist/aria/jit/JITCompiler", "rtGetIndex",
-                            "(" + IVALUE_DESC + IVALUE_DESC + ")" + IVALUE_DESC, false);
+                            "(" + IVALUE_DESC + IVALUE_DESC + CONTEXT_DESC + "I)" + IVALUE_DESC, false);
                     mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
                     mv.visitLabel(endGetIndex);
                 }
@@ -2499,11 +2518,13 @@ public class JITCompiler {
                     }
                     mv.visitMethodInsn(INVOKEVIRTUAL, "java/lang/StringBuilder", "toString",
                             "()Ljava/lang/String;", false);
-                    // new StringValue(str)
+                    // new StringValue(str, true) —— 显式字符串，canBeNumber=false(对齐解释器 CONCAT)；
+                    // 原单参 ctor 会对 "42" 这类插值结果做数字自动识别 → canBeNumber=true，与解释器的 +/== 语义分歧。
                     mv.visitTypeInsn(NEW, STRVAL);
                     mv.visitInsn(DUP_X1);
                     mv.visitInsn(SWAP);
-                    mv.visitMethodInsn(INVOKESPECIAL, STRVAL, "<init>", "(Ljava/lang/String;)V", false);
+                    mv.visitInsn(ICONST_1);
+                    mv.visitMethodInsn(INVOKESPECIAL, STRVAL, "<init>", "(Ljava/lang/String;Z)V", false);
                     mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
                 }
                 case CALL_CONSTRUCTOR -> {
@@ -2728,7 +2749,8 @@ public class JITCompiler {
                     }
                     mv.visitVarInsn(ALOAD, regToLocal[inst.b]); // value
                     mv.visitMethodInsn(INVOKESTATIC, "priv/seventeen/artist/aria/jit/JITCompiler",
-                            "rtSetIndex", "(" + IVALUE_DESC + IVALUE_DESC + IVALUE_DESC + ")V", false);
+                            "rtSetIndex", "(" + IVALUE_DESC + IVALUE_DESC + IVALUE_DESC + ")" + IVALUE_DESC, false);
+                    mv.visitVarInsn(ASTORE, regToLocal[inst.dst]); // 写回(SmallMapValue 扩容会换实例)
                 }
                 case NEW_FUNCTION -> {
                     // new FunctionValue(new FunctionCallable(SUB_PROGRAMS[inst.a], ctx))
@@ -2840,7 +2862,10 @@ public class JITCompiler {
                 case ADD_NUM, SUB_NUM, MUL_NUM, DIV_NUM, MOD_NUM ->
                         emitNumericBinary(mv, regToLocal, inst);
                 case NEG -> {
-                    emitGetNumber(mv, regToLocal, inst.a);
+                    // 用多态 numberValue()(对齐解释器 .numberValue())——原 emitGetNumber 直接 CHECKCAST NumberValue，
+                    // 对非数值操作数(如 -"str"/-none)抛 ClassCastException。
+                    mv.visitVarInsn(ALOAD, regToLocal[inst.a]);
+                    mv.visitMethodInsn(INVOKEVIRTUAL, IVALUE, "numberValue", "()D", false);
                     mv.visitInsn(DNEG);
                     emitNewNumberValue(mv);
                     mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
@@ -3443,14 +3468,21 @@ public class JITCompiler {
         mv.visitVarInsn(ASTORE, regToLocal[inst.dst]);
     }
 
-    public static IValue<?> rtCall(IValue<?> callee, IValue<?>[] args, Context ctx) {
+    public static IValue<?> rtCall(IValue<?> callee, IValue<?>[] args, Context ctx) throws AriaException {
         try {
             if (callee instanceof FunctionValue fv) {
                 return fv.getCallable().invoke(
                         new InvocationData(ctx, null, args));
             }
+            // StoreOnlyValue<CallableWithInvoker>(如 ArcartX AttributeCallable)也可调用(对齐解释器)
+            if (callee instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof CallableWithInvoker cwi) {
+                return cwi.getCallable().invoke(new InvocationData(ctx, null, args));
+            }
+        } catch (AriaException ae) {
+            throw ae; // 脚本级异常冒泡，对齐解释器 → 上层 getResult 记日志(不再静默吞成 NONE)
         } catch (Exception e) { /* ignore */ }
-        return NoneValue.NONE;
+        // Shimmer 对齐：对非可调用值加括号 → 吞括号返回原值(而非 NONE)
+        return callee != null ? callee : NoneValue.NONE;
     }
 
 
@@ -3484,7 +3516,7 @@ public class JITCompiler {
      * Hot path（cache 命中）：直接 var-storage lookup → varRef.getValue() → 校验 objClass。
      * 命中时根据 kind 走 builtin 专用路径或通用 ICallable 路径。不命中或类型不符回落 slow path。
      */
-    public static IValue<?> rtCallByNameCached(IRInstruction inst, IValue<?>[] args, Context ctx) {
+    public static IValue<?> rtCallByNameCached(IRInstruction inst, IValue<?>[] args, Context ctx) throws AriaException {
         Object cached = inst.cache;
         if (cached instanceof StaticCallCache scc) {
             VariableReference varRef = ctx.getLocalStorage().getVarVariableExisting(scc.baseKey);
@@ -3504,6 +3536,8 @@ public class JITCompiler {
                                 return scc.callable.invoke(new InvocationData(ctx, obj, callArgs));
                             }
                         }
+                    } catch (AriaException ae) {
+                        throw ae; // 脚本级异常冒泡(不再静默吞成 NONE)
                     } catch (Exception e) {
                         return NoneValue.NONE;
                     }
@@ -3513,7 +3547,7 @@ public class JITCompiler {
         return rtCallByNameCachedSlow(inst, args, ctx);
     }
 
-    private static IValue<?> rtCallByNameCachedSlow(IRInstruction inst, IValue<?>[] args, Context ctx) {
+    private static IValue<?> rtCallByNameCachedSlow(IRInstruction inst, IValue<?>[] args, Context ctx) throws AriaException {
         String fn = inst.name;
         int dot = fn == null ? -1 : fn.indexOf('.');
         if (dot <= 0) return rtCallByName(fn, args, ctx);
@@ -3563,6 +3597,8 @@ public class JITCompiler {
 
             // 4. 兜底：rtCallMethod 处理 AriaClassValue 实例方法 / FunctionValue 字段等
             return rtCallMethod(obj, methodName, args, ctx);
+        } catch (AriaException ae) {
+            throw ae; // 脚本级异常冒泡(不再静默吞成 NONE)
         } catch (Exception e) {
             return NoneValue.NONE;
         }
@@ -3595,27 +3631,36 @@ public class JITCompiler {
         ctx.getScopeStack().get(key).setValue(value);
     }
 
-    public static IValue<?> rtCallByName(String name, IValue<?>[] args, Context ctx) {
+    public static IValue<?> rtCallByName(String name, IValue<?>[] args, Context ctx) throws AriaException {
         try {
-            // 先查 scope → var → global
+            // 解析函数值：scope → var → val → global(对齐解释器 resolveVariable；原缺 val 存储 → `val f = ->{}; f()` 得 NONE)
             VariableKey key = VariableKey.of(name);
-            // scope
+            IValue<?> fnVal = null;
             VariableReference scopeRef = ctx.getScopeStack().getExisting(key);
             if (scopeRef != null) {
-                IValue<?> val = scopeRef.getValue();
-                if (val instanceof FunctionValue fv) {
-                    return fv.getCallable().invoke(
-                            new InvocationData(ctx, null, args));
+                IValue<?> v = scopeRef.getValue();
+                if (v != null && !(v instanceof NoneValue)) fnVal = v;
+            }
+            if (fnVal == null) {
+                VariableReference varRef = ctx.getLocalStorage().getVarVariableExisting(key);
+                if (varRef != null) {
+                    IValue<?> v = varRef.getValue();
+                    if (v != null && !(v instanceof NoneValue)) fnVal = v;
                 }
             }
-            // var
-            VariableReference varRef = ctx.getLocalStorage().getVarVariableExisting(key);
-            if (varRef != null) {
-                IValue<?> val = varRef.getValue();
-                if (val instanceof FunctionValue fv) {
-                    return fv.getCallable().invoke(
-                            new InvocationData(ctx, null, args));
+            if (fnVal == null) {
+                ValueReference valRef = ctx.getLocalStorage().getValVariableExisting(key);
+                if (valRef != null && valRef.isAssigned()) {
+                    IValue<?> v = valRef.getValue();
+                    if (v != null && !(v instanceof NoneValue)) fnVal = v;
                 }
+            }
+            // FunctionValue 或 StoreOnlyValue<CallableWithInvoker>(对齐解释器 1088-1099)
+            if (fnVal instanceof FunctionValue fv) {
+                return fv.getCallable().invoke(new InvocationData(ctx, null, args));
+            }
+            if (fnVal instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof CallableWithInvoker cwi) {
+                return cwi.getCallable().invoke(new InvocationData(ctx, null, args));
             }
             // CallableManager 全局函数
             ICallable globalFn =
@@ -3653,6 +3698,8 @@ public class JITCompiler {
                     return rtCallMethod(obj, methodName, args, ctx);
                 }
             }
+        } catch (AriaException ae) {
+            throw ae; // 脚本级异常冒泡(不再静默吞成 NONE)
         } catch (Exception e) { /* ignore */ }
         return NoneValue.NONE;
     }
@@ -3788,8 +3835,21 @@ public class JITCompiler {
      * ClassDefinition 的静态方法 / __get_xxx getter 等少见路径走 Interpreter，本方法返回 NoneValue
      * 而不是抛异常 —— 不会破坏脚本，只是该 GET_PROP 退化为 NONE，调用方按 NONE 处理。
      */
-    public static IValue<?> rtGetProp(IValue<?> obj, String propName, Context ctx) {
+    public static IValue<?> rtGetProp(IValue<?> obj, String propName, Context ctx) throws AriaException {
         if (obj == null) return NoneValue.NONE;
+        // ClassDefinition 静态字段/静态方法(对齐解释器 GET_PROP 首段；须先于下方通用 ObjectValue 分支)
+        if (obj instanceof ObjectValue<?> cdov && cdov.jvmValue() instanceof ClassDefinition cd) {
+            if (cd.hasStaticField(propName)) return cd.getStaticField(propName);
+            IRProgram sm = cd.findStaticMethod(propName);
+            if (sm != null) {
+                ICallable callable = data -> {
+                    Context c = data.getContext() != null ? data.getContext() : ctx;
+                    return new Interpreter().execute(sm, c.createCallContext(null, data.getArgs())).getValue();
+                };
+                return new FunctionValue(callable);
+            }
+            return NoneValue.NONE;
+        }
         if (obj instanceof MapValue mv) {
             IValue<?> val = mv.jvmValue().get(new StringValue(propName));
             return val != null ? val : NoneValue.NONE;
@@ -3800,10 +3860,17 @@ public class JITCompiler {
         }
         if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
             ClassInstance ci = cv.jvmValue();
+            ClassDefinition classDef = ci.getClassDefinition();
+            // 属性 getter __get_xxx(对齐解释器；仅当类有任意访问器时查)——原 JIT 缺此，脚本类属性 getter 不触发
+            if (classDef != null && classDef.hasAnyAccessor()) {
+                IRProgram getterProg = classDef.findMethod("__get_" + propName);
+                if (getterProg != null) {
+                    return new Interpreter().execute(getterProg, ctx.createCallContext(obj, new IValue<?>[0])).getValue();
+                }
+            }
             IReference fieldRef = ci.getFields().get(propName);
             if (fieldRef != null) return fieldRef.getValue();
             // 类定义里的方法 → FunctionValue 包装
-            ClassDefinition classDef = ci.getClassDefinition();
             if (classDef != null) {
                 IRProgram methodProg = classDef.findMethod(propName);
                 if (methodProg != null) {
@@ -3818,9 +3885,8 @@ public class JITCompiler {
             return NoneValue.NONE;
         }
         if (obj instanceof ObjectValue<?> ov) {
-            IAriaObject so = ov.jvmValue();
-            Variable v = so.getVariable(propName);
-            return v != null && v.ariaValue() != null ? v.ariaValue() : NoneValue.NONE;
+            // Shimmer 对齐：先查对象函数(self.parent 等)、再 getVariable + 惰性属性 auto-invoke
+            return Interpreter.resolveObjectProperty(ov, propName, ctx);
         }
         if (obj instanceof ListValue lv && "length".equals(propName)) {
             return new NumberValue(lv.jvmValue().size());
@@ -3875,7 +3941,7 @@ public class JITCompiler {
         return obj;
     }
 
-    public static IValue<?> rtGetIndex(IValue<?> obj, IValue<?> idx) {
+    public static IValue<?> rtGetIndex(IValue<?> obj, IValue<?> idx, Context ctx, int forIn) throws AriaException {
         if (obj instanceof ListValue lv) {
             int index = (int) idx.numberValue();
             List<IValue<?>> list = lv.jvmValue();
@@ -3889,6 +3955,10 @@ public class JITCompiler {
         }
         if (obj instanceof MapValue mv) {
             Map<IValue<?>, IValue<?>> map = mv.jvmValue();
+            if (forIn == 1) {
+                // for-in 迭代：第 idx 个 [key,value] 对(对齐解释器；原 JIT 忽略 for-in 哨兵 → Map 遍历错乱)
+                return Interpreter.mapEntryAt(map, (int) idx.numberValue());
+            }
             // 先用原始 IValue key 查
             IValue<?> val = map.get(idx);
             if (val == null && !(idx instanceof StringValue)) {
@@ -3908,20 +3978,21 @@ public class JITCompiler {
             }
             return NoneValue.NONE;
         }
+        // 一般 IAriaObject 元素访问 obj['key'](对齐解释器 + Shimmer;此前 JIT 缺此分支 → self.parent['名'] 恒 NONE)。
+        // Range 已在上面处理,此处是通用对象。
+        if (obj instanceof ObjectValue<?> ov) {
+            Variable elem = ov.jvmValue().getElement(idx.stringValue());
+            return Interpreter.resolveLazyProperty(elem != null ? elem.ariaValue() : null, ctx);
+        }
         return NoneValue.NONE;
     }
 
-    public static IValue<?> rtCallMethod(IValue<?> obj, String methodName, IValue<?>[] args, Context ctx) {
+    public static IValue<?> rtCallMethod(IValue<?> obj, String methodName, IValue<?>[] args, Context ctx) throws AriaException {
         try {
-            // 先查 CallableManager 对象函数
-            ICallable objFunc = CallableManager.INSTANCE
-                    .getObjectFunction(obj.getClass(), methodName);
-            if (objFunc != null) {
-                IValue<?>[] callArgs = new IValue<?>[args.length + 1];
-                callArgs[0] = obj;
-                System.arraycopy(args, 0, callArgs, 1, args.length);
-                return objFunc.invoke(new InvocationData(ctx, obj, callArgs));
-            }
+            // 先查 CallableManager 对象函数(用 receiverClass 解包 ObjectValue、正确 self 约定；
+            // 原先用 obj.getClass() → ObjectValue 恒查不到具体类方法 → JIT 下所有对象方法调用失效)
+            IValue<?> objMethodResult = Interpreter.invokeRegisteredObjectMethod(obj, methodName, args, ctx);
+            if (objMethodResult != null) return objMethodResult;
             // 查 AriaClassValue 实例方法
             if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
                 ClassInstance ci = cv.jvmValue();
@@ -3957,6 +4028,8 @@ public class JITCompiler {
                             new InvocationData(callCtx, obj, args));
                 }
             }
+        } catch (AriaException ae) {
+            throw ae; // 脚本级异常冒泡(不再静默吞成 NONE)
         } catch (Exception e) { /* ignore */ }
         return NoneValue.NONE;
     }
@@ -3987,7 +4060,7 @@ public class JITCompiler {
         return new MapValue(map);
     }
 
-    public static void rtSetIndex(IValue<?> obj, IValue<?> index, IValue<?> value) {
+    public static IValue<?> rtSetIndex(IValue<?> obj, IValue<?> index, IValue<?> value) {
         if (index == null) {
             // 空索引 — list.add
             if (obj instanceof ListValue lv) {
@@ -4000,12 +4073,16 @@ public class JITCompiler {
             list.set(idx, value);
         } else if (obj instanceof MapValue mv) {
             mv.jvmValue().put(index, value);
+        } else if (obj instanceof SmallMapValue sm) {
+            // 对齐解释器 SET_INDEX：put 可能因扩容返回新实例(MapValue)，需写回 obj 寄存器(见 codegen ASTORE)
+            return sm.put(index.stringValue(), value);
         } else if (obj instanceof ObjectValue<?> ov) {
+            // 用抽象 Variable.setValue 兼容 ObjectVar(控件元素写入)——原先只对 Variable.Normal 写入，
+            // ShimmerControl.getElement 返回的是 ObjectVar → JIT 下 self['child']=v / self['x']+=v / ++ 静默丢失。
             Variable elem = ov.jvmValue().getElement(index.stringValue());
-            if (elem instanceof Variable.Normal nv) {
-                nv.setValue(value);
-            }
+            if (elem != null) elem.setValue(value);
         }
+        return obj;
     }
 
     public static void rtVarAddReg(VariableReference ref, IValue<?> val) {

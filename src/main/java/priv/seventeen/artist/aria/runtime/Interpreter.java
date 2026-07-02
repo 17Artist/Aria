@@ -603,9 +603,8 @@ public class Interpreter {
                             break;
                         }
                         if (obj instanceof ObjectValue<?> ov) {
-                            IAriaObject so = ov.jvmValue();
-                            Variable v = so.getVariable(propName);
-                            registers[inst.dst] = v.ariaValue() != null ? v.ariaValue() : NoneValue.NONE;
+                            // Shimmer 对齐：先查对象函数(self.parent 等)、再 getVariable + 惰性属性 auto-invoke
+                            registers[inst.dst] = resolveObjectProperty(ov, propName, context);
                         } else if (obj instanceof AriaClassValue cv) {
                             ClassInstance ci = cv.jvmValue();
                             if (ci != null) {
@@ -761,9 +760,9 @@ public class Interpreter {
                                     registers[inst.dst] = NoneValue.NONE;
                                 }
                             } else if (obj instanceof ObjectValue<?> ov) {
-                                // IAriaObject 元素访问: obj['key']
+                                // IAriaObject 元素访问: obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
                                 Variable elem = ov.jvmValue().getElement(idx.stringValue());
-                                registers[inst.dst] = elem != null ? elem.ariaValue() : NoneValue.NONE;
+                                registers[inst.dst] = resolveLazyProperty(elem != null ? elem.ariaValue() : null, context);
                             } else {
                                 registers[inst.dst] = NoneValue.NONE;
                             }
@@ -793,10 +792,11 @@ public class Interpreter {
                                 if (after != sm) registers[inst.dst] = after;
                             } else if (obj instanceof ObjectValue<?> ov) {
                                 // IAriaObject 元素设置: obj['key'] = value
-                                // 通过 getElement 获取 Variable 引用再 setValue
+                                // 用抽象 Variable.setValue —— ShimmerControl.getElement 返回的是 ObjectVar(非 Normal)，
+                                // 原先只对 Variable.Normal 写入会静默丢弃对控件元素的赋值。
                                 Variable elem = ov.jvmValue().getElement(idx.stringValue());
-                                if (elem instanceof Variable.Normal nv) {
-                                    nv.setValue(val);
+                                if (elem != null) {
+                                    elem.setValue(val);
                                 }
                             }
                         }
@@ -2151,8 +2151,9 @@ public class Interpreter {
                                 registers[inst.dst] = NoneValue.NONE;
                             }
                         } else if (obj instanceof ObjectValue<?> ov) {
+                            // IAriaObject 元素访问 obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
                             Variable elem = ov.jvmValue().getElement(idx.stringValue());
-                            registers[inst.dst] = elem != null ? elem.ariaValue() : NoneValue.NONE;
+                            registers[inst.dst] = resolveLazyProperty(elem != null ? elem.ariaValue() : null, context);
                         } else {
                             registers[inst.dst] = NoneValue.NONE;
                         }
@@ -2330,6 +2331,38 @@ public class Interpreter {
         return BooleanValue.of(found);
     }
 
+    /**
+     * 惰性属性求值(对齐 Shimmer 的 auto-invoke 语义)。
+     * ArcartX 把控件属性(如 {@code self.y})存成 {@code StoreOnlyValue<CallableWithInvoker>}(AttributeCallable)——
+     * 属性被读取用作值时,Shimmer 会以当前上下文自动调用求值(Additive/Multiplicative/Relational/... 每个操作数消费点)。
+     * Aria 在属性读取(GET_PROP)处统一做等价求值:仅当解析出的值包着 {@link CallableWithInvoker} 时自动调用,
+     * 不影响 Aria class 的方法引用({@link FunctionValue},jvmValue 为 ICallable,故 {@code self.method} 仍可作引用/被 {@code ()} 调用)。
+     */
+    public static IValue<?> resolveLazyProperty(IValue<?> v, Context ctx) throws AriaException {
+        if (v == null) return NoneValue.NONE;
+        if (v.jvmValue() instanceof CallableWithInvoker cwi) {
+            return cwi.invoke(ctx, EMPTY_ARGS);
+        }
+        return v;
+    }
+
+    /**
+     * 对象属性读取(GET_PROP for ObjectValue)的完整解析,对齐 Shimmer 的 {@code Dot.getNode} 顺序：
+     * <b>先查注册对象函数</b>(如 {@code @AriaInvokeHandler("parent")}),命中则以零用户参数调用并返回其(已包装)结果
+     * —— 覆盖"{@code self.parent} 不带括号也能取父对象"的 Shimmer 语义(Aria 的 GET_PROP 原本只查 getVariable,
+     * 从不查对象函数,故 self.parent 恒 NONE);否则走 {@code getVariable} + 惰性属性 auto-invoke({@link #resolveLazyProperty})。
+     */
+    public static IValue<?> resolveObjectProperty(ObjectValue<?> ov, String propName, Context ctx) throws AriaException {
+        IAriaObject so = ov.jvmValue();
+        if (so == null) return NoneValue.NONE;
+        ICallable objFunc = CallableManager.INSTANCE.getObjectFunction(so.getClass(), propName);
+        if (objFunc != null) {
+            return callObjectFunction(objFunc, ctx, ov, EMPTY_ARGS);
+        }
+        Variable v = so.getVariable(propName);
+        return resolveLazyProperty(v != null ? v.ariaValue() : null, ctx);
+    }
+
     /** obj.name 的成员取值：用于"非函数括号后缀吞掉括号后返回原成员值"(obj.field() == obj.field)。 */
     private static IValue<?> memberOf(IValue<?> obj, String name) {
         if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
@@ -2365,7 +2398,7 @@ public class Interpreter {
      * for-in 迭代模式下取 Map 的第 i 个 [key, value] 对(插入序),越界返回 none。
      * 用于 `for (k, v in map)` / `for (e in map)`——GET_INDEX 普通模式按键查找无法遍历 Map。
      */
-    private static IValue<?> mapEntryAt(java.util.Map<IValue<?>, IValue<?>> m, int i) {
+    public static IValue<?> mapEntryAt(java.util.Map<IValue<?>, IValue<?>> m, int i) {
         if (i < 0 || i >= m.size()) return NoneValue.NONE;
         int j = 0;
         for (java.util.Map.Entry<IValue<?>, IValue<?>> e : m.entrySet()) {
@@ -2521,6 +2554,20 @@ public class Interpreter {
      *   <li><b>非包装值</b>(String/List/Map 等 stdlib 值)：保持既有约定，self 前插为 {@code args[0]}、target=obj。</li>
      * </ul>
      */
+    /**
+     * JIT/解释器共用的注册对象函数分派。用 {@link #receiverClass}【解包 ObjectValue 取真实类】查找 CallableManager 里
+     * 注册在具体类下的对象函数(否则 ObjectValue 的 getClass() 恒为 ObjectValue.class，永远查不到 → 控件/自定义对象的
+     * 方法在 JIT 下全部失效),命中则按正确 self 约定调用({@link #callObjectFunction}：ObjectValue 接收者不前插 self、
+     * target 为解包对象;stdlib 值前插 self)。返回 {@code null} 表示未注册该方法,调用方继续走后续兜底。
+     */
+    public static IValue<?> invokeRegisteredObjectMethod(IValue<?> obj, String methodName,
+                                                         IValue<?>[] userArgs, Context ctx) throws AriaException {
+        if (obj == null) return null;
+        ICallable objFunc = CallableManager.INSTANCE.getObjectFunction(receiverClass(obj), methodName);
+        if (objFunc == null) return null;
+        return callObjectFunction(objFunc, ctx, obj, userArgs);
+    }
+
     private static IValue<?> callObjectFunction(ICallable objFunc, Context ctx, IValue<?> obj, IValue<?>[] callArgs)
             throws AriaException {
         if (obj instanceof ObjectValue<?> ov) {
