@@ -422,27 +422,27 @@ db.close(conn)
 
 ### 字符串方法
 
-| 方法                 | 签名                                     | 说明                |
-|--------------------|----------------------------------------|-------------------|
-| `length`           | `str.length()`                         | 字符串长度             |
-| `substring`        | `str.substring(start, end?)`           | 子串                |
-| `replace`          | `str.replace(target, replacement)`     | 替换所有匹配（字面量）；只给 1 个参数时返回原串 |
-| `replaceAll`       | `str.replaceAll(regex, replacement)`   | 正则替换所有            |
-| `replaceFirst`     | `str.replaceFirst(regex, replacement)` | 正则替换第一个           |
-| `split`            | `str.split(delimiter[, limit])`        | 按正则分割为列表；默认（无 limit）丢弃尾部空串 |
-| `trim`             | `str.trim()`                           | 去除首尾空白            |
+| 方法                 | 签名                                     | 说明                             |
+|--------------------|----------------------------------------|--------------------------------|
+| `length`           | `str.length()`                         | 字符串长度                          |
+| `substring`        | `str.substring(start, end?)`           | 子串                             |
+| `replace`          | `str.replace(target, replacement)`     | 替换所有匹配（字面量）；只给 1 个参数时返回原串      |
+| `replaceAll`       | `str.replaceAll(regex, replacement)`   | 正则替换所有                         |
+| `replaceFirst`     | `str.replaceFirst(regex, replacement)` | 正则替换第一个                        |
+| `split`            | `str.split(delimiter[, limit])`        | 按正则分割为列表；默认（无 limit）丢弃尾部空串     |
+| `trim`             | `str.trim()`                           | 去除首尾空白                         |
 | `startsWith`       | `str.startsWith(prefix[, offset])`     | 是否以 prefix 开头（可从 offset 位置起判断） |
-| `endsWith`         | `str.endsWith(suffix)`                 | 是否以 suffix 结尾     |
-| `contains`         | `str.contains(sub)`                    | 是否包含子串            |
-| `indexOf`          | `str.indexOf(sub[, from])`             | 子串首次出现位置，-1 表示未找到（可从 from 起查） |
-| `lastIndexOf`      | `str.lastIndexOf(sub[, from])`         | 子串最后出现位置（可从 from 向前查） |
-| `toUpperCase`      | `str.toUpperCase()`                    | 转大写（Locale.ROOT，不受系统语言影响） |
-| `toLowerCase`      | `str.toLowerCase()`                    | 转小写（Locale.ROOT）  |
-| `charAt`           | `str.charAt(index)`                    | 获取指定位置字符          |
-| `equals`           | `str.equals(other)`                    | 严格相等比较            |
-| `equalsIgnoreCase` | `str.equalsIgnoreCase(other)`          | 忽略大小写比较           |
-| `isEmpty`          | `str.isEmpty()`                        | 是否为空串             |
-| `repeat`           | `str.repeat(count)`                    | 重复字符串 count 次     |
+| `endsWith`         | `str.endsWith(suffix)`                 | 是否以 suffix 结尾                  |
+| `contains`         | `str.contains(sub)`                    | 是否包含子串                         |
+| `indexOf`          | `str.indexOf(sub[, from])`             | 子串首次出现位置，-1 表示未找到（可从 from 起查）  |
+| `lastIndexOf`      | `str.lastIndexOf(sub[, from])`         | 子串最后出现位置（可从 from 向前查）          |
+| `toUpperCase`      | `str.toUpperCase()`                    | 转大写（Locale.ROOT，不受系统语言影响）      |
+| `toLowerCase`      | `str.toLowerCase()`                    | 转小写（Locale.ROOT）               |
+| `charAt`           | `str.charAt(index)`                    | 获取指定位置字符                       |
+| `equals`           | `str.equals(other)`                    | 严格相等比较                         |
+| `equalsIgnoreCase` | `str.equalsIgnoreCase(other)`          | 忽略大小写比较                        |
+| `isEmpty`          | `str.isEmpty()`                        | 是否为空串                          |
+| `repeat`           | `str.repeat(count)`                    | 重复字符串 count 次                  |
 
 ```aria
 s = "Hello, World!"
@@ -461,28 +461,28 @@ println('abcabc'.indexOf('a', 1))     // 3.0
 
 #### 基础操作
 
-| 方法            | 签名                          | 说明               |
-|---------------|-----------------------------|------------------|
-| `add`         | `list.add(item)`            | 追加元素到末尾           |
-| `add`         | `list.add(index, item)`     | 插入元素到指定索引         |
-| `remove`      | `list.remove(value)`        | 按**值**删除首个相等元素（跨类型数值相等），返回 boolean |
-| `removeIndex` | `list.removeIndex(index)`   | 按**索引**删除，返回被删元素；上越界返回 `none`，负索引抛错 |
-| `get`         | `list.get(index)`           | 获取指定索引元素；上越界返回 `none`，负索引抛错 |
-| `set`         | `list.set(index, value)`    | 设置指定索引元素，返回**旧元素**；越界不写入 |
-| `size`        | `list.size()`               | 列表长度             |
-| `contains`    | `list.contains(item)`       | 是否包含元素（跨类型数值相等：`contains('2')` 匹配 `2`） |
-| `containsAll` | `list.containsAll(other)`   | 是否包含另一列表的全部元素（此方法**不**做跨类型匹配） |
-| `indexOf`     | `list.indexOf(item)`        | 元素首次出现位置（跨类型数值相等），-1 未找到 |
-| `lastIndexOf` | `list.lastIndexOf(item)`    | 元素最后出现位置（跨类型数值相等） |
-| `sort`        | `list.sort()`               | 按数值排序（原地）        |
-| `reverse`     | `list.reverse()`            | 反转（原地）           |
-| `clear`       | `list.clear()`              | 清空               |
-| `isEmpty`     | `list.isEmpty()`            | 是否为空             |
-| `subList`     | `list.subList(from, to)`    | 子列表 `[from, to)`；要求 `from`、`to` 都**小于** size，否则返回 `none` |
-| `addAll`      | `list.addAll(other)`        | 追加另一列表全部元素，返回 boolean；非列表参数按单元素处理 |
-| `removeAll`   | `list.removeAll(other)`     | 移除另一列表中的所有元素，返回 boolean；非列表参数按单元素处理 |
-| `retainAll`   | `list.retainAll(other)`     | 仅保留另一列表中出现的元素（跨类型数值相等），返回是否发生变化 |
-| `join`        | `list.join(separator?)`     | 拼接为字符串，默认 `,`    |
+| 方法            | 签名                        | 说明                                                       |
+|---------------|---------------------------|----------------------------------------------------------|
+| `add`         | `list.add(item)`          | 追加元素到末尾                                                  |
+| `add`         | `list.add(index, item)`   | 插入元素到指定索引                                                |
+| `remove`      | `list.remove(value)`      | 按**值**删除首个相等元素（跨类型数值相等），返回 boolean                       |
+| `removeIndex` | `list.removeIndex(index)` | 按**索引**删除，返回被删元素；上越界返回 `none`，负索引抛错                      |
+| `get`         | `list.get(index)`         | 获取指定索引元素；上越界返回 `none`，负索引抛错                              |
+| `set`         | `list.set(index, value)`  | 设置指定索引元素，返回**旧元素**；越界不写入                                 |
+| `size`        | `list.size()`             | 列表长度                                                     |
+| `contains`    | `list.contains(item)`     | 是否包含元素（跨类型数值相等：`contains('2')` 匹配 `2`）                   |
+| `containsAll` | `list.containsAll(other)` | 是否包含另一列表的全部元素（此方法**不**做跨类型匹配）                            |
+| `indexOf`     | `list.indexOf(item)`      | 元素首次出现位置（跨类型数值相等），-1 未找到                                 |
+| `lastIndexOf` | `list.lastIndexOf(item)`  | 元素最后出现位置（跨类型数值相等）                                        |
+| `sort`        | `list.sort()`             | 按数值排序（原地）                                                |
+| `reverse`     | `list.reverse()`          | 反转（原地）                                                   |
+| `clear`       | `list.clear()`            | 清空                                                       |
+| `isEmpty`     | `list.isEmpty()`          | 是否为空                                                     |
+| `subList`     | `list.subList(from, to)`  | 子列表 `[from, to)`；要求 `from`、`to` 都**小于** size，否则返回 `none` |
+| `addAll`      | `list.addAll(other)`      | 追加另一列表全部元素，返回 boolean；非列表参数按单元素处理                        |
+| `removeAll`   | `list.removeAll(other)`   | 移除另一列表中的所有元素，返回 boolean；非列表参数按单元素处理                      |
+| `retainAll`   | `list.retainAll(other)`   | 仅保留另一列表中出现的元素（跨类型数值相等），返回是否发生变化                          |
+| `join`        | `list.join(separator?)`   | 拼接为字符串，默认 `,`                                            |
 
 #### 高阶函数
 
@@ -512,22 +512,22 @@ println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 
 #### 基础操作
 
-| 方法              | 签名                               | 说明                          |
-|-----------------|----------------------------------|-----------------------------|
-| `put`           | `map.put(key, value)`            | 设置键值对，返回该键的**旧值**（无则 `none`） |
-| `get`           | `map.get(key)`                   | 获取值                         |
-| `remove`        | `map.remove(key)`                | 移除键值对，返回被移除的值               |
-| `size`          | `map.size()`                     | 键值对数量                       |
-| `keys`          | `map.keys()`                     | 所有键的列表                      |
-| `values`        | `map.values()`                   | 所有值的列表                      |
-| `entries`       | `map.entries()`                  | 所有键值对 `[[key, value], ...]` |
-| `containsKey`   | `map.containsKey(key)`           | 是否包含键                       |
-| `containsValue` | `map.containsValue(value)`       | 是否包含值                       |
-| `clear`         | `map.clear()`                    | 清空                          |
-| `isEmpty`       | `map.isEmpty()`                  | 是否为空                        |
-| `putAll`        | `map.putAll(otherMap)`           | 合并另一个字典（接受任意 map；非 map 参数静默忽略） |
+| 方法              | 签名                               | 说明                                 |
+|-----------------|----------------------------------|------------------------------------|
+| `put`           | `map.put(key, value)`            | 设置键值对，返回该键的**旧值**（无则 `none`）       |
+| `get`           | `map.get(key)`                   | 获取值                                |
+| `remove`        | `map.remove(key)`                | 移除键值对，返回被移除的值                      |
+| `size`          | `map.size()`                     | 键值对数量                              |
+| `keys`          | `map.keys()`                     | 所有键的列表                             |
+| `values`        | `map.values()`                   | 所有值的列表                             |
+| `entries`       | `map.entries()`                  | 所有键值对 `[[key, value], ...]`        |
+| `containsKey`   | `map.containsKey(key)`           | 是否包含键                              |
+| `containsValue` | `map.containsValue(value)`       | 是否包含值                              |
+| `clear`         | `map.clear()`                    | 清空                                 |
+| `isEmpty`       | `map.isEmpty()`                  | 是否为空                               |
+| `putAll`        | `map.putAll(otherMap)`           | 合并另一个字典（接受任意 map；非 map 参数静默忽略）     |
 | `putIfAbsent`   | `map.putIfAbsent(key, value)`    | 键不存在时设置并返回 `none`；已存在时返回旧值（宿主包装形式） |
-| `getOrDefault`  | `map.getOrDefault(key, default)` | 获取值，不存在返回默认值                |
+| `getOrDefault`  | `map.getOrDefault(key, default)` | 获取值，不存在返回默认值                       |
 
 #### 高阶函数
 

@@ -331,7 +331,7 @@ Context 还支持创建派生上下文：
 
 ### createSharedCallContext — 跨调用共享裸名作用域
 
-`createSharedCallContext` 对照 Shimmer 的 `new Context(parent, self, args)`：被调脚本
+`createSharedCallContext` ：被调脚本
 对**裸名临时变量**的读写与调用方完全互通（同一 ScopeStack、同一 local/global 存储），
 只有 `self` / `args` 被替换。适合宿主回调场景（如 UI 的多个 action 脚本共享一批临时变量）。
 
@@ -448,15 +448,15 @@ IValue<?> result = Aria.eval(code, ctx, sandbox);
 
 ### 配置项说明
 
-| 配置项                 | 类型          | 默认值        | 说明                 |
-|---------------------|-------------|------------|--------------------|
-| `maxExecutionTime`  | `long`      | 0（无限制）     | 最大执行时间（毫秒）         |
+| 配置项                 | 类型          | 默认值        | 说明                            |
+|---------------------|-------------|------------|-------------------------------|
+| `maxExecutionTime`  | `long`      | 0（无限制）     | 最大执行时间（毫秒）                    |
 | `maxCallDepth`      | `int`       | 512        | 最大函数调用深度（非沙箱模式下解释器内建上限为 2048） |
-| `maxInstructions`   | `long`      | 0（无限制）     | 最大执行指令数            |
-| `allowFileSystem`   | `boolean`   | true       | 是否允许 fs 命名空间       |
-| `allowNetwork`      | `boolean`   | true       | 是否允许 net/http 命名空间 |
-| `allowJavaInterop`  | `boolean`   | true       | 是否允许 Java 命名空间     |
-| `allowedNamespaces` | `String...` | null（全部允许） | 命名空间白名单            |
+| `maxInstructions`   | `long`      | 0（无限制）     | 最大执行指令数                       |
+| `allowFileSystem`   | `boolean`   | true       | 是否允许 fs 命名空间                  |
+| `allowNetwork`      | `boolean`   | true       | 是否允许 net/http 命名空间            |
+| `allowJavaInterop`  | `boolean`   | true       | 是否允许 Java 命名空间                |
+| `allowedNamespaces` | `String...` | null（全部允许） | 命名空间白名单                       |
 
 预定义配置：
 - `SandboxConfig.UNRESTRICTED` — 无任何限制（默认）

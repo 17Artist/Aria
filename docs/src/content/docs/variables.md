@@ -14,13 +14,13 @@ Aria 的变量系统是语言最核心的设计之一。与传统语言使用关
 
 5 种命名空间对应 3 层存储：
 
-| 前缀        | 存储层           | 脚本可写           | 线程安全                 | 特殊行为             |
-|-----------|---------------|----------------|----------------------|------------------|
-| `var.`    | LocalStorage  | 可写             | 否                    | —                |
-| `val.`    | LocalStorage  | **不可写（静默忽略）** | 否                    | 仅宿主可注入（只读槽）      |
-| `global.` | GlobalStorage | 可写             | 是（ConcurrentHashMap） | 跨上下文共享           |
-| `server.` | GlobalStorage | 可写             | 是                    | 读取触发 listener    |
-| `client.` | GlobalStorage | 可写             | 是                    | 写入触发 listener    |
+| 前缀        | 存储层           | 脚本可写          | 线程安全                 | 特殊行为          |
+|-----------|---------------|---------------|----------------------|---------------|
+| `var.`    | LocalStorage  | 可写            | 否                    | —             |
+| `val.`    | LocalStorage  | **不可写（静默忽略）** | 否                    | 仅宿主可注入（只读槽）   |
+| `global.` | GlobalStorage | 可写            | 是（ConcurrentHashMap） | 跨上下文共享        |
+| `server.` | GlobalStorage | 可写            | 是                    | 读取触发 listener |
+| `client.` | GlobalStorage | 可写            | 是                    | 写入触发 listener |
 
 > **命名空间完全隔离**：裸标识符（无前缀）、`var.`、`val.` 是三个互不相通的命名空间，
 > 读写**互不回退**——`var.x = 10` 之后读裸名 `x` 得到的是 `none`（另一个变量），反之亦然。
