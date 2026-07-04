@@ -16,36 +16,39 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 public final class StringValue extends IValue<String> {
 
     private final String value;
     private final boolean canBeNumber;
-    private double numericValue;
+    private final double numericValue;
 
     public StringValue(String value) {
+        // Shimmer 对齐(operators-3/11, gui-chain-10):无条件 try{Double.parseDouble}catch 判 canBeNumber
+        // (无长度≤30/首字符门控;容空白/Infinity/NaN;拼接结果也重算)。
         this.value = value;
-        boolean canParse = false;
+        boolean canParse;
         double parsed = 0;
-        if (value != null && !value.isEmpty() && value.length() <= 30) {
-            char c = value.charAt(0);
-            if ((c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.') {
-                try {
-                    parsed = Double.parseDouble(value);
-                    canParse = true;
-                } catch (NumberFormatException ignored) {}
-            }
+        try {
+            parsed = Double.parseDouble(value);
+            canParse = true;
+        } catch (Exception ignored) {
+            canParse = false;
         }
         this.canBeNumber = canParse;
         this.numericValue = parsed;
     }
 
-        public StringValue(String value, boolean concat) {
-        this.value = value;
-        this.canBeNumber = false;
-        this.numericValue = 0;
-    }
-
     public boolean canBeNumber() { return canBeNumber; }
+
+    /** Shimmer 对齐(StringValue.nc()):一元负号——不可数抛异常,可数返回取负数字。 */
+    public NumberValue nc() throws AriaRuntimeException {
+        if (!canBeNumber) {
+            throw new AriaRuntimeException("字符串内容非数字: " + value + " 无法转换为数字进行运算");
+        }
+        return new NumberValue(-numericValue);
+    }
 
     @Override public String jvmValue() { return value; }
     @Override public double numberValue() { return numericValue; }
@@ -56,36 +59,48 @@ public final class StringValue extends IValue<String> {
     @Override public boolean canMath() { return true; }
     @Override public boolean isBaseType() { return true; }
 
+    // Shimmer 对齐(StringValue.addValue 逐行):
+    //  串+数字:自身可数 → 数值相加;不可数 → value + numberValue()(即 "slot"+1="slot1.0")
+    //  串+串:双方可数 → 数值相加返回 NumberValue;否则拼接
+    //  串+其它:拼 stringValue()
     @Override
     protected IValue<?> addValue(IValue<?> other) {
+        if (other instanceof NumberValue nv) {
+            if (this.canBeNumber) {
+                return new NumberValue(this.numericValue + nv.numberValue());
+            }
+            return new StringValue(this.value + nv.numberValue());
+        }
         if (other instanceof StringValue sv) {
             if (this.canBeNumber && sv.canBeNumber()) {
                 return new NumberValue(this.numericValue + sv.numberValue());
             }
-            return new StringValue(this.value + sv.stringValue(), true);
+            return new StringValue(this.value + sv.jvmValue());
         }
-        if (other instanceof NumberValue) {
-            if (this.canBeNumber) {
-                return new NumberValue(this.numericValue + other.numberValue());
-            }
-            return new StringValue(this.value + other.stringValue(), true);
-        }
-        return new StringValue(this.value + other.stringValue(), true);
+        return new StringValue(this.value + other.stringValue());
     }
 
+    // Shimmer 对齐(StringValue.subValue 逐行):仅 Number/String 有数值分支;
+    // 其它类型(含 boolean/none)一律走 replace(bug-for-bug:"5"-true="5" 而非 4.0)。
     @Override
     protected IValue<?> subValue(IValue<?> other) {
+        if (other instanceof NumberValue nv) {
+            if (this.canBeNumber) {
+                return new NumberValue(this.numericValue - nv.numberValue());
+            }
+            return new StringValue(this.value.replace(nv.stringValue(), ""));
+        }
         if (other instanceof StringValue sv) {
             if (this.canBeNumber && sv.canBeNumber()) {
                 return new NumberValue(this.numericValue - sv.numberValue());
             }
-            return new StringValue(this.value.replace(sv.stringValue(), ""), true);
+            return new StringValue(this.value.replace(sv.jvmValue(), ""));
         }
-        if (this.canBeNumber) {
-            return new NumberValue(this.numericValue - other.numberValue());
-        }
-        return new StringValue(this.value.replace(other.stringValue(), ""), true);
+        return new StringValue(this.value.replace(other.stringValue(), ""));
     }
+
+    @Override
+    public String typeName() { return "string"; }
 
     @Override
     public String toString() { return value; }

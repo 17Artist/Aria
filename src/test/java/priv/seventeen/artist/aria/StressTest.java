@@ -376,12 +376,12 @@ public class StressTest {
     @Test
     void testOptionalChainingWithValue() throws AriaException {
         IValue<?> result = eval("""
-            val.obj = {'name': 'Alice'}
+            obj = {'name': 'Alice'}
             return obj?.name
             """);
         assertEquals("Alice", result.stringValue());
         IValue<?> result2 = eval("""
-            val.obj = {'age': 25}
+            obj = {'age': 25}
             return obj?.age
             """);
         assertEquals(25.0, result2.numberValue());
@@ -412,8 +412,8 @@ public class StressTest {
     @Test
     void testStringInterpolation() throws AriaException {
         IValue<?> result = eval("""
-            var.name = 'World'
-            var.num = 42
+            name = 'World'
+            num = 42
             return "hello {name}, value={num}"
             """);
         assertEquals("hello World, value=42.0", result.stringValue()); // Shimmer 对齐：数字恒 double 格式
@@ -427,10 +427,11 @@ public class StressTest {
 
     @Test
     void testStringEscapeCharacters() throws AriaException {
+        // Shimmer 对齐(syntax-05)：转义不展开,值保留引号内原文
         IValue<?> result = eval("return 'a\\tb\\nc'\n");
-        assertEquals("a\tb\nc", result.stringValue());
+        assertEquals("a\\tb\\nc", result.stringValue());
         IValue<?> result2 = eval("return 'x\\\\y'\n");
-        assertEquals("x\\y", result2.stringValue());
+        assertEquals("x\\\\y", result2.stringValue());
     }
 
     @Test
@@ -468,28 +469,29 @@ public class StressTest {
 
     @Test
     void testListCreateIndexPushPop() throws AriaException {
+        // A5(builtins-object-1/2)：remove 已对齐 Shimmer(按值删除返回 boolean)，按索引删除改用 removeIndex。
         IValue<?> result = eval("""
-            val.list = [10, 20, 30]
+            list = [10, 20, 30]
             list.add(40)
-            val.last = list.get(3)
-            list.remove(3)
+            last = list.get(3)
+            list.removeIndex(3)
             return last + list.size()
             """);
-        // last=40, size after remove=3 => 43
+        // last=40, size after removeIndex=3 => 43
         assertEquals(43.0, result.numberValue());
     }
 
     @Test
     void testListSlice() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 2, 3, 4, 5]
-            val.sub = list.subList(1, 4)
+            list = [1, 2, 3, 4, 5]
+            sub = list.subList(1, 4)
             return sub.size()
             """);
         assertEquals(3.0, result.numberValue());
         IValue<?> result2 = eval("""
-            val.list = [10, 20, 30, 40, 50]
-            val.sub = list.subList(0, 2)
+            list = [10, 20, 30, 40, 50]
+            sub = list.subList(0, 2)
             return sub.get(1)
             """);
         assertEquals(20.0, result2.numberValue());
@@ -498,11 +500,11 @@ public class StressTest {
     @Test
     void testListSortReverse() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [3, 1, 4, 1, 5]
+            list = [3, 1, 4, 1, 5]
             list.sortBy(-> { return args[0] })
-            val.first = list.get(0)
+            first = list.get(0)
             list.reverse()
-            val.newFirst = list.get(0)
+            newFirst = list.get(0)
             return first + newFirst
             """);
         // sorted first=1, reversed first=5 => 6
@@ -512,10 +514,10 @@ public class StressTest {
     @Test
     void testMapCreateAccessPutGetKeysValues() throws AriaException {
         IValue<?> result = eval("""
-            val.m = {'name': 'Alice', 'age': 30}
+            m = {'name': 'Alice', 'age': 30}
             m.put('city', 'Tokyo')
-            val.k = m.keys().size()
-            val.v = m.values().size()
+            k = m.keys().size()
+            v = m.values().size()
             return k + v
             """);
         // 3 keys + 3 values = 6
@@ -525,7 +527,7 @@ public class StressTest {
     @Test
     void testNestedDataStructures() throws AriaException {
         IValue<?> result = eval("""
-            val.data = [
+            data = [
                 {'name': 'Alice', 'scores': [90, 85, 92]},
                 {'name': 'Bob', 'scores': [78, 88, 95]}
             ]
@@ -539,80 +541,82 @@ public class StressTest {
     void testListHigherOrderFunctions() throws AriaException {
         // map
         assertEquals(6.0, eval("""
-            val.list = [1, 2, 3, 4, 5]
-            val.doubled = list.map(-> { return args[0] * 2 })
+            list = [1, 2, 3, 4, 5]
+            doubled = list.map(-> { return args[0] * 2 })
             return doubled.get(2)
             """).numberValue());
 
         // filter
         assertEquals(3.0, eval("""
-            val.list = [1, 2, 3, 4, 5, 6]
+            list = [1, 2, 3, 4, 5, 6]
             return list.filter(-> { return args[0] % 2 == 0 }).size()
             """).numberValue());
 
         // reduce
         assertEquals(15.0, eval("""
-            val.list = [1, 2, 3, 4, 5]
+            list = [1, 2, 3, 4, 5]
             return list.reduce(-> { return args[0] + args[1] }, 0)
             """).numberValue());
 
         // find
         assertEquals(4.0, eval("""
-            val.list = [1, 2, 3, 4, 5]
+            list = [1, 2, 3, 4, 5]
             return list.find(-> { return args[0] > 3 })
             """).numberValue());
 
         // every
         assertEquals(true, eval("""
-            val.list = [2, 4, 6]
+            list = [2, 4, 6]
             return list.every(-> { return args[0] % 2 == 0 })
             """).booleanValue());
         assertEquals(false, eval("""
-            val.list = [2, 3, 6]
+            list = [2, 3, 6]
             return list.every(-> { return args[0] % 2 == 0 })
             """).booleanValue());
 
         // some
         assertEquals(true, eval("""
-            val.list = [1, 3, 5, 6]
+            list = [1, 3, 5, 6]
             return list.some(-> { return args[0] % 2 == 0 })
             """).booleanValue());
         assertEquals(false, eval("""
-            val.list = [1, 3, 5]
+            list = [1, 3, 5]
             return list.some(-> { return args[0] % 2 == 0 })
             """).booleanValue());
     }
 
     @Test
     void testListForEach() throws AriaException {
+        // Shimmer 对齐(R2)：lambda 体隔离——裸名累加器写不透外层，累加需用 var. 存储。
         IValue<?> result = eval("""
-            val.list = [1, 2, 3]
-            var.sum = 0
-            list.forEach(-> { sum += args[0] })
-            return var.sum
+            list = [1, 2, 3]
+            var.feSum = 0
+            list.forEach(-> { var.feSum += args[0] })
+            return var.feSum
             """);
         assertEquals(6.0, result.numberValue());
+        // 隔离本身：裸名 sum 在体内的写入对外层不可见(保持 0)
         IValue<?> result2 = eval("""
-            val.list = [10, 20, 30, 40]
-            var.sum = 0
+            list = [10, 20, 30, 40]
+            sum = 0
             list.forEach(-> { sum += args[0] })
-            return var.sum
+            return sum
             """);
-        assertEquals(100.0, result2.numberValue());
+        assertEquals(0.0, result2.numberValue());
     }
 
     @Test
     void testSpreadOperator() throws AriaException {
         assertEquals(6.0, eval("""
-            val.a = [1, 2, 3]
-            val.b = [0, ...a, 4, 5]
+            a = [1, 2, 3]
+            b = [0, ...a, 4, 5]
             return b.size()
             """).numberValue());
 
         assertEquals(4.0, eval("""
-            val.a = [1, 2]
-            val.b = [3, 4]
-            val.c = [...a, ...b]
+            a = [1, 2]
+            b = [3, 4]
+            c = [...a, ...b]
             return c.size()
             """).numberValue());
     }
@@ -693,7 +697,7 @@ public class StressTest {
     @Test
     void testForInList() throws AriaException {
         IValue<?> result = eval("""
-            val.items = [10, 20, 30, 40]
+            items = [10, 20, 30, 40]
             var.sum = 0
             for (item in items) {
                 var.sum += item
@@ -702,7 +706,7 @@ public class StressTest {
             """);
         assertEquals(100.0, result.numberValue());
         IValue<?> result2 = eval("""
-            val.items = [1, 2, 3]
+            items = [1, 2, 3]
             var.product = 1
             for (item in items) {
                 var.product *= item
@@ -721,7 +725,8 @@ public class StressTest {
             }
             return var.sum
             """);
-        assertEquals(55.0, result.numberValue());
+        // Shimmer 对齐: controlflow-01/02 —— range 双端闭,sum(1..11)=66
+        assertEquals(66.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.sum = 0
             for (i in Range(0, 5)) {
@@ -729,7 +734,8 @@ public class StressTest {
             }
             return var.sum
             """);
-        assertEquals(10.0, result2.numberValue());
+        // Shimmer 对齐: controlflow-01/02 —— range 双端闭,sum(0..5)=15
+        assertEquals(15.0, result2.numberValue());
     }
 
     @Test
@@ -744,7 +750,8 @@ public class StressTest {
             }
             return var.i
             """);
-        assertEquals(10.0, result.numberValue());
+        // Shimmer 对齐(syntax-06/controlflow-04)：while 内 break 泄漏终止脚本 => none(0)
+        assertEquals(0.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.i = 100
             while (true) {
@@ -755,8 +762,8 @@ public class StressTest {
             }
             return var.i
             """);
-        // 100-7*15=100-105=-5
-        assertEquals(-5.0, result2.numberValue());
+        // Shimmer 对齐(syntax-06/controlflow-04)：break 泄漏 => none(0)
+        assertEquals(0.0, result2.numberValue());
     }
 
     @Test
@@ -773,8 +780,9 @@ public class StressTest {
             }
             return var.sum
             """);
-        // 奇数之和: 1+3+5+7+9+11+13+15+17+19 = 100
-        assertEquals(100.0, result.numberValue());
+        // Shimmer 对齐(controlflow-04)：末轮(i=20,偶数)以 next 结束后条件为假退出,
+        // 残留 NEXT 泄漏终止脚本 => none(0)
+        assertEquals(0.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.sum = 0
             var.i = 0
@@ -796,7 +804,7 @@ public class StressTest {
         IValue<?> result = eval("""
             var.x = 1
             var.result = 0
-            switch (x) {
+            switch (var.x) {
                 case 1 {
                     var.result = var.result + 10
                 }
@@ -809,12 +817,12 @@ public class StressTest {
             }
             return var.result
             """);
-        // switch 穿透：1 匹配后继续执行 2 和 3
-        assertEquals(60.0, result.numberValue());
+        // Shimmer 对齐(controlflow-03)：非穿透,case 1 执行后比对值被块结果 10.0 替换 => 10
+        assertEquals(10.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.x = 2
             var.result = 0
-            switch (x) {
+            switch (var.x) {
                 case 1 {
                     var.result = var.result + 10
                 }
@@ -827,8 +835,8 @@ public class StressTest {
             }
             return var.result
             """);
-        // switch 穿透：2 匹配后继续执行 3 => 20+30=50
-        assertEquals(50.0, result2.numberValue());
+        // Shimmer 对齐(controlflow-03)：case 2 执行后比对值被替换为 20.0 => 20
+        assertEquals(20.0, result2.numberValue());
     }
 
     @Test
@@ -836,7 +844,7 @@ public class StressTest {
         IValue<?> result = eval("""
             var.x = 1
             var.result = 0
-            match (x) {
+            match (var.x) {
                 case 1 {
                     var.result = 10
                 }
@@ -851,7 +859,7 @@ public class StressTest {
         IValue<?> result2 = eval("""
             var.x = 2
             var.result = 0
-            match (x) {
+            match (var.x) {
                 case 1 {
                     var.result = 10
                 }
@@ -869,7 +877,7 @@ public class StressTest {
     void testMatchElse() throws AriaException {
         IValue<?> result = eval("""
             var.x = 99
-            match (x) {
+            match (var.x) {
                 case 1 {
                     return 'one'
                 }
@@ -881,7 +889,7 @@ public class StressTest {
         assertEquals("other", result.stringValue());
         IValue<?> result2 = eval("""
             var.x = 1
-            match (x) {
+            match (var.x) {
                 case 1 {
                     return 'one'
                 }
@@ -969,42 +977,43 @@ public class StressTest {
 
     @Test
     void testClosureCapture() throws AriaException {
+        // Shimmer 对齐(R2)：lambda 体与外层 scope 完全隔离——体内 x 恒 none(数值 0/串 "")。
         IValue<?> result = eval("""
-            var.x = 10
+            x = 10
             var.f = -> { return x }
-            var.x = 99
+            x = 99
             return f()
             """);
-        assertEquals(99.0, result.numberValue());
+        assertEquals(0.0, result.numberValue());
         IValue<?> result2 = eval("""
-            var.x = 'hello'
+            x = 'hello'
             var.f = -> { return x }
-            var.x = 'world'
+            x = 'world'
             return f()
             """);
-        assertEquals("world", result2.stringValue());
+        assertEquals("", result2.stringValue());
     }
 
     @Test
     void testHigherOrderFunctionAsParam() throws AriaException {
         IValue<?> result = eval("""
             var.apply = -> {
-                val.fn = args[0]
-                val.val = args[1]
+                fn = args[0]
+                val = args[1]
                 return fn(val)
             }
             var.double = -> { return args[0] * 2 }
-            return apply(double, 21)
+            return apply(var.double, 21)
             """);
         assertEquals(42.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.apply = -> {
-                val.fn = args[0]
-                val.val = args[1]
+                fn = args[0]
+                val = args[1]
                 return fn(val)
             }
             var.triple = -> { return args[0] * 3 }
-            return apply(triple, 10)
+            return apply(var.triple, 10)
             """);
         assertEquals(30.0, result2.numberValue());
     }
@@ -1013,33 +1022,35 @@ public class StressTest {
     void testHigherOrderFunctionAsReturn() throws AriaException {
         IValue<?> result = eval("""
             var.makeAdder = -> {
-                val.n = args[0]
+                n = args[0]
                 return -> { return n + args[0] }
             }
-            val.add10 = makeAdder(10)
+            add10 = makeAdder(10)
             return add10(32)
             """);
-        assertEquals(42.0, result.numberValue());
+        // Shimmer 对齐(R2)：工厂闭包无法捕获 n(隔离)——none + 32 = 32.0。
+        assertEquals(32.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.makeAdder = -> {
-                val.n = args[0]
+                n = args[0]
                 return -> { return n + args[0] }
             }
-            val.add5 = makeAdder(5)
+            add5 = makeAdder(5)
             return add5(15)
             """);
-        assertEquals(20.0, result2.numberValue());
+        // Shimmer 对齐(R2)：none + 15 = 15.0。
+        assertEquals(15.0, result2.numberValue());
     }
 
     @Test
     void testImmediateInvocation() throws AriaException {
         IValue<?> result = eval("""
-            val.r = (-> { return 42 })()
+            r = (-> { return 42 })()
             return r
             """);
         assertEquals(42.0, result.numberValue());
         IValue<?> result2 = eval("""
-            val.r = (-> { return 'iife' })()
+            r = (-> { return 'iife' })()
             return r
             """);
         assertEquals("iife", result2.stringValue());
@@ -1080,22 +1091,22 @@ public class StressTest {
     @Test
     void testFunctionAsMapValue() throws AriaException {
         IValue<?> result = eval("""
-            val.addFn = -> { return args[0] + args[1] }
-            val.mulFn = -> { return args[0] * args[1] }
-            val.ops = {
+            addFn = -> { return args[0] + args[1] }
+            mulFn = -> { return args[0] * args[1] }
+            ops = {
                 'add': addFn,
                 'mul': mulFn
             }
-            val.a = ops.get('add')
-            val.m = ops.get('mul')
+            a = ops.get('add')
+            m = ops.get('mul')
             return a(3, 4) + m(5, 6)
             """);
         // 7 + 30 = 37
         assertEquals(37.0, result.numberValue());
         IValue<?> result2 = eval("""
-            val.subFn = -> { return args[0] - args[1] }
-            val.ops = {'sub': subFn}
-            val.s = ops.get('sub')
+            subFn = -> { return args[0] - args[1] }
+            ops = {'sub': subFn}
+            s = ops.get('sub')
             return s(100, 42)
             """);
         assertEquals(58.0, result2.numberValue());
@@ -1136,7 +1147,7 @@ public class StressTest {
                 var.x = 0
                 var.y = 0
             }
-            val.p = Point()
+            p = Point()
             return p.x + p.y
             """);
         assertEquals(0.0, result.numberValue());
@@ -1144,7 +1155,7 @@ public class StressTest {
             class Counter {
                 var.count = 10
             }
-            val.c = Counter()
+            c = Counter()
             return c.count
             """);
         assertEquals(10.0, result2.numberValue());
@@ -1161,7 +1172,7 @@ public class StressTest {
                     self.y = args[1]
                 }
             }
-            val.p = Point(10, 20)
+            p = Point(10, 20)
             return p.x + p.y
             """);
         assertEquals(30.0, result.numberValue());
@@ -1174,7 +1185,7 @@ public class StressTest {
                     self.y = args[1]
                 }
             }
-            val.p = Point(3, 7)
+            p = Point(3, 7)
             return p.x * p.y
             """);
         assertEquals(21.0, result2.numberValue());
@@ -1188,7 +1199,7 @@ public class StressTest {
                 new = -> { self.name = args[0] }
                 greet = -> { return 'Hello, ' + self.name + '!' }
             }
-            val.g = Greeter('Aria')
+            g = Greeter('Aria')
             return g.greet()
             """);
         assertEquals("Hello, Aria!", result.stringValue());
@@ -1198,7 +1209,7 @@ public class StressTest {
                 new = -> { self.name = args[0] }
                 greet = -> { return 'Hello, ' + self.name + '!' }
             }
-            val.g = Greeter('Java')
+            g = Greeter('Java')
             return g.greet()
             """);
         assertEquals("Hello, Java!", result2.stringValue());
@@ -1220,7 +1231,7 @@ public class StressTest {
                 }
                 speak = -> { return self.name + ' barks!' }
             }
-            val.d = Dog('Rex', 'Lab')
+            d = Dog('Rex', 'Lab')
             return d.speak() + ' ' + d.breed
             """);
         assertEquals("Rex barks! Lab", result.stringValue());
@@ -1234,7 +1245,7 @@ public class StressTest {
                 new = -> { self.name = args[0] }
                 speak = -> { return self.name + ' meows!' }
             }
-            val.c = Cat('Whiskers')
+            c = Cat('Whiskers')
             return c.speak()
             """);
         assertEquals("Whiskers meows!", result2.stringValue());
@@ -1248,7 +1259,7 @@ public class StressTest {
                 var.timeout = 30
                 var.name = 'default'
             }
-            val.c = Config()
+            c = Config()
             return c.timeout
             """);
         assertEquals(30.0, result.numberValue());
@@ -1258,7 +1269,7 @@ public class StressTest {
                 var.timeout = 30
                 var.name = 'default'
             }
-            val.c = Config()
+            c = Config()
             return c.name
             """);
         assertEquals("default", result2.stringValue());
@@ -1279,7 +1290,7 @@ public class StressTest {
                 var.val3 = 3
                 getSum = -> { return self.val + self.val2 + self.val3 }
             }
-            val.c = C()
+            c = C()
             return c.getSum()
             """);
         assertEquals(6.0, result.numberValue());
@@ -1296,7 +1307,7 @@ public class StressTest {
                 var.val3 = 3
                 getSum = -> { return self.val + self.val2 + self.val3 }
             }
-            val.c = C()
+            c = C()
             return c.getVal() + c.getVal2()
             """);
         // getVal()=1, getVal2()=2 => 3
@@ -1451,12 +1462,12 @@ public class StressTest {
     void testArrayDestructure() throws AriaException {
         IValue<?> result = eval("""
             var.[a, b, c] = [1, 2, 3]
-            return a + b + c
+            return var.a + var.b + var.c
             """);
         assertEquals(6.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.[x, y] = [10, 20]
-            return x * y
+            return var.x * var.y
             """);
         assertEquals(200.0, result2.numberValue());
     }
@@ -1465,13 +1476,13 @@ public class StressTest {
     void testRestDestructure() throws AriaException {
         IValue<?> result = eval("""
             var.[first, ...rest] = [1, 2, 3, 4, 5]
-            return first + rest.size()
+            return var.first + var.rest.size()
             """);
         // first=1, rest.size()=4 => 5
         assertEquals(5.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.[head, ...tail] = [10, 20, 30]
-            return head + tail.get(0)
+            return var.head + var.tail.get(0)
             """);
         // head=10, tail[0]=20 => 30
         assertEquals(30.0, result2.numberValue());
@@ -1482,16 +1493,16 @@ public class StressTest {
         IValue<?> result = eval("""
             var.a = 10
             var.b = 20
-            var.[a, b] = [b, a]
-            return a * 100 + b
+            var.[a, b] = [var.b, var.a]
+            return var.a * 100 + var.b
             """);
         // a=20, b=10 => 2010
         assertEquals(2010.0, result.numberValue());
         IValue<?> result2 = eval("""
             var.a = 3
             var.b = 7
-            var.[a, b] = [b, a]
-            return a * 10 + b
+            var.[a, b] = [var.b, var.a]
+            return var.a * 10 + var.b
             """);
         // a=7, b=3 => 73
         assertEquals(73.0, result2.numberValue());
@@ -1599,9 +1610,9 @@ public class StressTest {
     void testMassVariableDeclaration() throws AriaException {
         // 动态生成 1000 个变量赋值
         StringBuilder code = new StringBuilder();
-        code.append("val.list = []\n");
+        code.append("list = []\n");
         for (int i = 0; i < 1000; i++) {
-            code.append("var.v").append(i).append(" = ").append(i).append("\n");
+            code.append("v").append(i).append(" = ").append(i).append("\n");
             code.append("list.add(v").append(i).append(")\n");
         }
         code.append("return list.size()\n");
@@ -1612,11 +1623,11 @@ public class StressTest {
     @Test
     void testJavaForceSetVal() throws AriaException {
         Context ctx = Aria.createContext();
-        // 先在脚本中声明 val
-        var unit = Aria.compile("test", ctx, "val.PI = 3.14\nreturn PI");
+        // Shimmer 对齐: variables-8 —— 脚本写 val 静默忽略,读回 none(0)；只有宿主 forceSet 生效
+        var unit = Aria.compile("test", ctx, "val.PI = 3.14\nreturn val.PI");
         IValue<?> r1 = unit.execute();
         Interpreter.resetCallDepth();
-        assertEquals(3.14, r1.numberValue(), 0.001);
+        assertEquals(0.0, r1.numberValue(), 0.001);
 
         // Java 端强制修改 val
         ctx.forceSetLocalValue(VariableKey.of("PI"), new NumberValue(3.14159));

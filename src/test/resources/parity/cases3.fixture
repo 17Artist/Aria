@@ -1,0 +1,229 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases3.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | PASS
+--- SRC
+return range(1,3)
+--- EXPECT
+R1 OK [range:1.0-3.0] ##ObjectValue
+R2 OK [range:1.0-3.0] ##ObjectValue
+R3 OK [range:1.0-3.0] ##ObjectValue
+R4 OK [range:1.0-3.0] ##ObjectValue
+R5 OK [range:1.0-3.0] ##ObjectValue
+--- END
+
+### CASE 2 | PASS
+--- SRC
+s = 0
+for (i in range(1,3)) {
+s = s + 1
+}
+return s
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 3 | PASS
+--- SRC
+s = ''
+for (i in range(1,3)) {
+s = s + i + ','
+}
+return s
+--- EXPECT
+R1 OK 1.0,2.0,3.0, ##StringValue
+R2 OK 1.0,2.0,3.0, ##StringValue
+R3 OK 1.0,2.0,3.0, ##StringValue
+R4 OK 1.0,2.0,3.0, ##StringValue
+R5 OK 1.0,2.0,3.0, ##StringValue
+--- END
+
+### CASE 4 | PASS
+--- SRC
+return 3 ~~ range(1,3)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 5 | PASS
+--- SRC
+return 5 ~~ 5
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 6 | PASS
+--- SRC
+return 'a' ~~ 'a'
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 7 | PASS
+--- SRC
+f = -> {
+return 1
+}
+x = f
+(3)
+return x
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 8 | PASS
+--- SRC
+m = [10,20]
+[1]
+return m
+--- EXPECT
+R1 OK [10.0, 20.0] ##ListValue
+R2 OK [10.0, 20.0] ##ListValue
+R3 OK [10.0, 20.0] ##ListValue
+R4 OK [10.0, 20.0] ##ListValue
+R5 OK [10.0, 20.0] ##ListValue
+--- END
+
+### CASE 9 | PASS
+--- SRC
+x = 5
+- 2
+return x
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 10 | PASS
+--- SRC
+x = 1
+< 2
+return x
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 11 | PASS
+--- SRC
+x = 2
+return "v{x + 1}w"
+--- EXPECT
+R1 OK v3.0w ##StringValue
+R2 OK v3.0w ##StringValue
+R3 OK v3.0w ##StringValue
+R4 OK v3.0w ##StringValue
+R5 OK v3.0w ##StringValue
+--- END
+
+### CASE 12 | PASS
+--- SRC
+x = 2
+return "{x + 1}"
+--- EXPECT
+R1 OK 3.0 ##StringValue
+R2 OK 3.0 ##StringValue
+R3 OK 3.0 ##StringValue
+R4 OK 3.0 ##StringValue
+R5 OK 3.0 ##StringValue
+--- END
+
+### CASE 13 | PASS
+--- SRC
+m = {'k':7}
+return "k={m['k']};"
+--- EXPECT
+R1 OK k=7.0; ##StringValue
+R2 OK k=7.0; ##StringValue
+R3 OK k=7.0; ##StringValue
+R4 OK k=7.0; ##StringValue
+R5 OK k=7.0; ##StringValue
+--- END
+
+### CASE 14 | PASS
+--- SRC
+return ""
+--- EXPECT
+R1 OK  ##StringValue
+R2 OK  ##StringValue
+R3 OK  ##StringValue
+R4 OK  ##StringValue
+R5 OK  ##StringValue
+--- END
+
+### CASE 15 | PASS
+--- SRC
+x = 1
+== 1
+return x
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 16 | PASS
+--- SRC
+s = 0
+while (s < 5) {
+s = s + 2
+}
+return s
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 17 | PASS
+--- SRC
+s = 0
+for (i in [1,2,3]) {
+if (i == 2) {
+break
+}
+s = s + i
+}
+t = 99
+return t
+--- EXPECT
+R1 OK 99.0 ##NumberValue
+R2 OK 99.0 ##NumberValue
+R3 OK 99.0 ##NumberValue
+R4 OK 99.0 ##NumberValue
+R5 OK 99.0 ##NumberValue
+--- END

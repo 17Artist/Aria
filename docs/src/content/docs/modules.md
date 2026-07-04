@@ -35,7 +35,7 @@ import utils.helper as h
 从模块中导入指定的名称，只引入需要的符号到当前作用域：
 
 ```aria
-import { parse, stringify } from 'json'
+import { add, square } from 'mathlib'
 ```
 
 命名导入已完整支持（解析器 + 编译器 + 运行时）。导入的名称直接绑定到当前作用域，无需通过模块名前缀访问。
@@ -47,6 +47,7 @@ import { parse, stringify } from 'json'
 ```aria
 export val.PI = 3.14159
 export var.name = 'aria'
+export var.square = -> { return args[0] * args[0] }
 
 export class MyClass {
     var.value = 0
@@ -56,26 +57,50 @@ export class MyClass {
 }
 ```
 
-`export` 可以修饰任何顶层语句，包括 `var` / `val` 声明和 `class` 声明。
+`export` 修饰顶层的 `var.` / `val.` 声明和 `class` 声明。注意：
+
+- **`export val.x = ...` 正常生效**——模块导出表直接捕获右侧的值（这与普通脚本中
+  "`val.` 写入被静默忽略"不同，export 声明是特殊处理的）；
+- 导出函数请用 `export var.f = -> { ... }` 的形式；**裸名形式 `export f = -> {}`
+  不受支持**（导入方读到 `none`）；
+- 导出的**类**请通过**命名导入**使用（见下文），经模块对象 dot 访问类成员
+  （`mylib.MyClass(...)`）暂不可用。
 
 ## 模块对象与访问方式
 
 模块用 `export` 声明的符号组成它的**公共接口**。导入一个模块时，得到的是一个
-**模块对象**（`Module`），用 dot 访问其成员（也兼容下标）：
+**模块对象**（`Module`），用 dot 访问其成员（也兼容下标）。
+
+假设有模块文件 `mathlib.aria`：
 
 ```aria
-import math                 // math 是一个 Module 对象
-import math as m            // 别名同样是 Module 对象
+export var.square = -> { return args[0] * args[0] }
+export val.PI = 3.14159
+```
 
-val.r = math.sqrt(16)       // dot 访问导出成员
-val.r2 = m['sqrt'](16)      // 下标访问，等价
+导入并使用：
+
+```aria
+import mathlib                 // mathlib 是一个 Module 对象
+import mathlib as m            // 别名同样是 Module 对象
+
+r = mathlib.square(4)          // dot 访问导出成员 → 16.0
+r2 = m['square'](4)            // 下标访问，等价
+pi = m.PI                      // 3.14159
 ```
 
 **命名导入**则把指定符号直接绑定到当前作用域，可裸名使用：
 
 ```aria
-import { sqrt, pow } from math
-val.r = sqrt(16)            // 无需模块名前缀
+import { square, PI } from mathlib
+r = square(4)               // 无需模块名前缀
+```
+
+导出的类通过命名导入后可直接构造：
+
+```aria
+import { MyClass } from mylib
+obj = MyClass(7)
 ```
 
 > 兼容写法：模块也可以不用 `export` 而显式 `return` 一个值（例如一个 map）。这种

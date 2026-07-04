@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 public sealed abstract class IData permits IValue, Variable, Namespace {
 
     public abstract IValue<?> ariaValue();
@@ -23,15 +25,18 @@ public sealed abstract class IData permits IValue, Variable, Namespace {
     public abstract boolean canMath();
     public abstract boolean isBaseType();
 
+    /** Shimmer 对齐(IData.type()):运算异常消息里的类型名。 */
+    public String typeName() { return "unknown"; }
 
-    public final IValue<?> add(IData other) {
+
+    public final IValue<?> add(IData other) throws AriaRuntimeException {
         IValue<?> left = this.ariaValue();
         IValue<?> right = other.ariaValue();
         if (left == null || right == null) return NoneValue.NONE;
         return left.addValue(right);
     }
 
-    public final IValue<?> sub(IData other) {
+    public final IValue<?> sub(IData other) throws AriaRuntimeException {
         IValue<?> left = this.ariaValue();
         IValue<?> right = other.ariaValue();
         if (left == null || right == null) return NoneValue.NONE;
@@ -73,12 +78,23 @@ public sealed abstract class IData permits IValue, Variable, Namespace {
         return BooleanValue.of(this.ariaValue().numberValue() < other.ariaValue().numberValue());
     }
 
-    public final BooleanValue ge(IData other) {
-        return BooleanValue.of(this.ariaValue().numberValue() >= other.ariaValue().numberValue());
+    // Shimmer 对齐(operators-8):ge/le 仅基础类型(number/string/boolean)可比,否则抛异常(gt/lt 不检查,bug-for-bug)。
+    public final BooleanValue ge(IData other) throws AriaRuntimeException {
+        IValue<?> left = this.ariaValue();
+        IValue<?> right = other.ariaValue();
+        if (left.isBaseType() && right.isBaseType()) {
+            return BooleanValue.of(left.numberValue() >= right.numberValue());
+        }
+        throw new AriaRuntimeException(typeName() + " 类型不支持比较运算");
     }
 
-    public final BooleanValue le(IData other) {
-        return BooleanValue.of(this.ariaValue().numberValue() <= other.ariaValue().numberValue());
+    public final BooleanValue le(IData other) throws AriaRuntimeException {
+        IValue<?> left = this.ariaValue();
+        IValue<?> right = other.ariaValue();
+        if (left.isBaseType() && right.isBaseType()) {
+            return BooleanValue.of(left.numberValue() <= right.numberValue());
+        }
+        throw new AriaRuntimeException(typeName() + " 类型不支持比较运算");
     }
 
     public final BooleanValue eq(IData other) {
@@ -95,12 +111,12 @@ public sealed abstract class IData permits IValue, Variable, Namespace {
             return BooleanValue.of(left.jvmValue().equals(right.jvmValue()));
         }
         if (left.canMath() && right.canMath()) {
-            // StringValue 特殊处理
-            if (left instanceof StringValue sl) {
-                if (!sl.canBeNumber()) return BooleanValue.FALSE;
+            // Shimmer 对齐(operators-5, IData.java:126-150):任一侧为不可数字符串 → 回退字符串比较
+            if (left instanceof StringValue sl && !sl.canBeNumber()) {
+                return BooleanValue.of(left.stringValue().equals(right.stringValue()));
             }
-            if (right instanceof StringValue sr) {
-                if (!sr.canBeNumber()) return BooleanValue.FALSE;
+            if (right instanceof StringValue sr && !sr.canBeNumber()) {
+                return BooleanValue.of(left.stringValue().equals(right.stringValue()));
             }
             return BooleanValue.of(left.numberValue() == right.numberValue());
         }

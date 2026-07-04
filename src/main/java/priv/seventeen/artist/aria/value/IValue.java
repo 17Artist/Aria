@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 public sealed abstract class IValue<T> extends IData permits
         NumberValue, BooleanValue, StringValue, NoneValue,
         ListValue, MapValue, ObjectValue, StoreOnlyValue,
@@ -36,12 +38,12 @@ public sealed abstract class IValue<T> extends IData permits
     @Override
     public IValue<?> ariaValue() { return this; }
 
-    // 子类重写这两个方法实现加减法的特殊行为
-    protected IValue<?> addValue(IValue<?> other) {
+    // 子类重写这两个方法实现加减法的特殊行为(Shimmer 对齐:非法操作数抛 AriaRuntimeException, operators-8)
+    protected IValue<?> addValue(IValue<?> other) throws AriaRuntimeException {
         return new NumberValue(this.numberValue() + other.numberValue());
     }
 
-    protected IValue<?> subValue(IValue<?> other) {
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
         return new NumberValue(this.numberValue() - other.numberValue());
     }
 }

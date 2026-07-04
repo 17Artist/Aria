@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -33,17 +35,30 @@ public final class MapValue extends IValue<Map<IValue<?>, IValue<?>>> {
 
     @Override public Map<IValue<?>, IValue<?>> jvmValue() { return value; }
     @Override public double numberValue() { return value.size(); }
-    @Override public String stringValue() { return value.toString(); }
+    // Shimmer 对齐(operators-14):"{k:v,k2:v2}"(冒号,无空格),键值用 stringValue()。
+    @Override public String stringValue() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("{");
+        value.forEach((k, v) ->
+                builder.append(k.stringValue()).append(":").append(v.stringValue()).append(","));
+        if (!value.isEmpty()) {
+            builder.deleteCharAt(builder.length() - 1);
+        }
+        builder.append("}");
+        return builder.toString();
+    }
     @Override public boolean booleanValue() { return !value.isEmpty(); }
     @Override public int typeID() { return 12; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
 
     @Override
-    protected IValue<?> addValue(IValue<?> other) {
-        // Shimmer 对齐：原地合并并返回 this。
+    protected IValue<?> addValue(IValue<?> other) throws AriaRuntimeException {
+        // Shimmer 对齐：原地合并并返回 this;非 map 抛异常(operators-8)。
         if (other instanceof MapValue mv) {
             this.value.putAll(mv.jvmValue());
+        } else {
+            throw new AriaRuntimeException("无法将" + other.typeName() + "类型的值与Map类型的值进行相加");
         }
         return this;
     }
@@ -64,6 +79,9 @@ public final class MapValue extends IValue<Map<IValue<?>, IValue<?>>> {
         }
         return this;
     }
+
+    @Override
+    public String typeName() { return "map"; }
 
     @Override
     public String toString() { return stringValue(); }

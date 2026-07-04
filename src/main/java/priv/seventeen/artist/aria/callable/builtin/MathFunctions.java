@@ -68,5 +68,16 @@ public class MathFunctions {
         manager.registerStaticFunction("math", "nextDown", d -> new NumberValue(Math.nextDown(d.get(0).numberValue())));
         manager.registerStaticFunction("math", "IEEEremainder", d -> new NumberValue(Math.IEEEremainder(d.get(0).numberValue(), d.get(1).numberValue())));
         manager.registerStaticFunction("math", "getExponent", d -> new NumberValue(Math.getExponent(d.get(0).numberValue())));
+        // Shimmer 对齐(builtins-static-3)：Shimmer 侧无 PI 常量，"pi"(小写,零参)是旧脚本获取 π 的唯一写法。
+        manager.registerStaticFunction("math", "pi", d -> new NumberValue(Math.PI));
+        // Shimmer 对齐(builtins-static-4)：nextAfter(a,b)。
+        manager.registerStaticFunction("math", "nextAfter", d -> new NumberValue(Math.nextAfter(d.get(0).numberValue(), d.get(1).numberValue())));
+
+        // A4(jit-17)：把 JIT 内联白名单涉及的默认实现记为「内建默认」——宿主覆盖注册后
+        // isDefaultStatic 变 false，JIT 编译时不再内联(改走注册表分派，与解释器一致)。
+        for (String n : new String[]{"sin", "cos", "tan", "abs", "floor", "ceil", "sqrt", "log",
+                "round", "pow", "min", "max", "random", "PI", "E"}) {
+            manager.markStaticDefault("math", n);
+        }
     }
 }

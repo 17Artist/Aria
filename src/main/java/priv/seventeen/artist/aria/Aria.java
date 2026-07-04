@@ -45,19 +45,35 @@ public final class Aria {
     private Aria() {}
 
     public static AriaCompilationUnit compile(String name, Context context, String code) throws CompileException {
+        return compile(name, context, code, false);
+    }
+
+
+    public static AriaCompilationUnit compile(String name, Context context, String code, boolean lenient) throws CompileException {
         ContentTracker tracker = new ContentTracker(code);
-        ASTNode ast = parse(code);
+        java.util.List<String> warnings = new java.util.ArrayList<>();
+        ASTNode ast = parse(code, lenient, warnings);
         IRProgram program = new Compiler().compile(name, ast);
         IRProgram optimized = OPTIMIZER.optimize(program);
-        return new AriaCompilationUnit(name, optimized, context, tracker);
+        AriaCompilationUnit unit = new AriaCompilationUnit(name, optimized, context, tracker);
+        unit.setWarnings(warnings);
+        return unit;
     }
 
     public static AriaCompiledRoutine compile(String name, String code) throws CompileException {
+        return compile(name, code, false);
+    }
+
+    /** lenient 语义见 {@link #compile(String, Context, String, boolean)}（syntax-08）。 */
+    public static AriaCompiledRoutine compile(String name, String code, boolean lenient) throws CompileException {
         ContentTracker tracker = new ContentTracker(code);
-        ASTNode ast = parse(code);
+        java.util.List<String> warnings = new java.util.ArrayList<>();
+        ASTNode ast = parse(code, lenient, warnings);
         IRProgram program = new Compiler().compile(name, ast);
         IRProgram optimized = OPTIMIZER.optimize(program);
-        return new AriaCompiledRoutine(name, optimized, tracker);
+        AriaCompiledRoutine routine = new AriaCompiledRoutine(name, optimized, tracker);
+        routine.setWarnings(warnings);
+        return routine;
     }
 
     public static IValue<?> eval(String code, Context context) throws AriaException {
@@ -88,13 +104,24 @@ public final class Aria {
 
 
     private static ASTNode parse(String code) throws CompileException {
+        return parse(code, false, null);
+    }
+
+    private static ASTNode parse(String code, boolean lenient, java.util.List<String> warningsOut) throws CompileException {
         Lexer lexer = new Lexer(code);
-        AriaParser parser = new AriaParser(lexer);
+        AriaParser parser = new AriaParser(lexer, lenient);
         ASTNode ast = parser.parse();
-        // fail-fast：任何解析错误立即抛出，不静默丢弃出错的语句。
-        // （LSP 等需要部分 AST 的消费方直接调用 AriaParser.parse()，不经此入口，故不受影响。）
         if (parser.hasErrors()) {
-            throw parser.getErrors().get(0);
+            if (!lenient) {
+                // fail-fast：任何解析错误立即抛出，不静默丢弃出错的语句。
+                // （LSP 等需要部分 AST 的消费方直接调用 AriaParser.parse()，不经此入口，故不受影响。）
+                throw parser.getErrors().get(0);
+            }
+            for (CompileException e : parser.getErrors()) {
+                String w = "[lenient] 语句解析失败,该语句及其后内容被丢弃: " + e.getMessage()
+                        + " (line " + e.getLine() + ", column " + e.getColumn() + ")";
+                if (warningsOut != null) warningsOut.add(w);
+            }
         }
         return ast;
     }

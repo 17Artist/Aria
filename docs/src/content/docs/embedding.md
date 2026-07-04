@@ -112,6 +112,9 @@ public class QuickStart {
 
 `Aria` 类在首次使用时会自动初始化默认引擎（注册所有内置函数和服务）。
 
+运行时错误以 `AriaException` 抛出，消息包含编译单元名、行号与出错源码行
+（`单元: [名字] 运行时错误, 位于第 X 行…`），详见[异常处理](error-handling)。
+
 ---
 
 ## Aria.eval — 一步执行
@@ -131,8 +134,8 @@ System.out.println(result.numberValue()); // 4.0
 
 // 执行多行代码
 IValue<?> result2 = Aria.eval("""
-    val.list = [1, 2, 3, 4, 5]
-    val.sum = list.reduce(-> { return args[0] + args[1] }, 0)
+    list = [1, 2, 3, 4, 5]
+    sum = list.reduce(-> { return args[0] + args[1] }, 0)
     return sum
     """, ctx);
 System.out.println(result2.numberValue()); // 15.0
@@ -163,7 +166,7 @@ IValue<?> result = Aria.eval("return 1 + 1", ctx, sandbox);
 
 ## Aria.compile — 编译 API
 
-提供两种编译重载。
+提供两种编译重载，均可追加 `boolean lenient` 参数启用宽容编译（见下文）。
 
 ### 编译并绑定上下文
 
@@ -176,8 +179,8 @@ public static AriaCompilationUnit compile(String name, Context context, String c
 ```java
 Context ctx = Aria.createContext();
 AriaCompilationUnit unit = Aria.compile("myScript", ctx, """
-    val.x = 10
-    val.y = 20
+    x = 10
+    y = 20
     return x + y
     """);
 
@@ -194,6 +197,7 @@ IValue<?> result2 = unit.execute();
 - `getProgram()` — 获取 IR 程序
 - `getContext()` — 获取绑定的 Context
 - `getTracker()` — 获取源码追踪器
+- `getWarnings()` — lenient 编译产生的警告列表（严格模式恒为空）
 
 ### 编译为预编译例程（不绑定上下文）
 
@@ -206,7 +210,7 @@ public static AriaCompiledRoutine compile(String name, String code) throws Compi
 ```java
 // 预编译（可复用）
 AriaCompiledRoutine routine = Aria.compile("template", """
-    val.greeting = "Hello, " + args[0] + "!"
+    greeting = "Hello, " + args[0] + "!"
     return greeting
     """);
 
@@ -225,6 +229,31 @@ IValue<?> r2 = routine.execute(ctx2); // "Hello, Bob!"
 - `getName()` — 例程名称
 - `getProgram()` — 获取 IR 程序
 - `getTracker()` — 获取源码追踪器
+- `getWarnings()` — lenient 编译产生的警告列表（严格模式恒为空）
+
+### lenient 宽容编译
+
+```java
+public static AriaCompilationUnit compile(String name, Context context, String code, boolean lenient)
+public static AriaCompiledRoutine compile(String name, String code, boolean lenient)
+```
+
+默认（`lenient = false`）严格模式下，任何解析错误立即抛出 `CompileException`（fail-fast）。
+
+`lenient = true` 时恢复 Shimmer 式宽容语义：**解析出错的语句及其之后的所有内容被丢弃**，
+保留出错前的语句正常编译执行；每个被丢弃的错误记录为一条警告：
+
+```java
+Context ctx = Aria.createContext();
+AriaCompilationUnit unit = Aria.compile("demo", ctx,
+        "var.a = 1\nvar.b = {bad\nvar.a = 99\nreturn var.a\n", true);
+
+unit.execute().numberValue();   // 1.0 —— 第 2 行起全部被截断，var.a = 99 未执行
+unit.getWarnings();
+// [ "[lenient] 语句解析失败,该语句及其后内容被丢弃: Expected COLON, got NEWLINE ..." ]
+```
+
+> lenient 只处理**语法**错误；运行时错误不受影响。
 
 ---
 
@@ -291,19 +320,50 @@ Context 提供的变量访问层级：
 - `getClientVariable(key)` — 客户端变量（`client.xxx`）
 - `getServerVariable(key)` — 服务端变量（`server.xxx`）
 - `getLocalVariable(key)` — 局部变量（`var.xxx`）
-- `getLocalValue(key)` — 局部常量（`val.xxx`）
+- `getLocalValue(key)` — val 只读槽（`val.xxx`，宿主经 forceSetValue 写入）
 - `getScopeVariable(key)` — 作用域变量
 
 Context 还支持创建派生上下文：
 - `createAsyncContext()` — 异步上下文（共享 globalStorage 和 localStorage，独立 scopeStack）
 - `snapshotForClosure()` — 闭包快照
-- `createCallContext(self, args)` — 函数调用上下文
+- `createCallContext(self, args)` — 函数调用上下文（**全新** ScopeStack，裸名与调用方隔离）
+- `createSharedCallContext(self, args)` — 共享调用上下文（**复用调用方同一** ScopeStack，仅替换 self/args）
 
-### val 变量覆写
+### createSharedCallContext — 跨调用共享裸名作用域
+
+`createSharedCallContext` 对照 Shimmer 的 `new Context(parent, self, args)`：被调脚本
+对**裸名临时变量**的读写与调用方完全互通（同一 ScopeStack、同一 local/global 存储），
+只有 `self` / `args` 被替换。适合宿主回调场景（如 UI 的多个 action 脚本共享一批临时变量）。
+
+配套契约：每次执行结束时作用域栈会弹回执行前的深度（裸名不跨 eval 残留）。宿主要维持
+**跨多次执行**的共享层，需要自行 `pushScope()` 持有一层常驻作用域：
 
 ```java
-// Java 端强制修改 val 变量
+Context caller = Aria.createContext();
+caller.pushScope();   // 宿主常驻层：执行边界只弹回到该深度，此层长驻
+
+// 预置/读取常驻层里的裸名变量
+caller.getScopeStack().get(VariableKey.of("flag")).setValue(new NumberValue(1));
+
+// 派生共享上下文执行脚本：脚本里的裸名 flag 与调用方是同一个绑定
+Context shared = caller.createSharedCallContext(selfValue, argsArray);
+Aria.eval("flag = 9", shared);
+
+Aria.eval("return flag", caller).numberValue();   // 9.0 —— 写回对调用方可见
+```
+
+### val 变量注入
+
+`val.` 是宿主注入的只读槽：**脚本对 val 的写入是静默 no-op**，引用上的普通
+`setValue` 同样是 no-op。宿主注入**必须**用 `forceSetLocalValue`（或引用上的
+`forceSetValue`）：
+
+```java
+// Java 端注入/覆写 val 变量（脚本中经 val.config 读取）
 ctx.forceSetLocalValue(VariableKey.of("config"), new StringValue("production"));
+
+// 无效：普通 setValue 对 val 引用是 no-op
+ctx.getLocalValue(VariableKey.of("config")).setValue(new StringValue("ignored"));
 ```
 
 ### 注解注册表（AnnotationRegistry）
@@ -343,19 +403,19 @@ AnnotationRegistry API：
 
 JIT 编译器对变量系统的处理方式：
 
-| 命名空间       | JIT 是否处理 | 说明                                          |
-|------------|----------|---------------------------------------------|
-| var.xxx    | 是        | `fastDoubleVars` 路径中复制为 double 局部变量，执行完毕后写回 |
-| val.xxx    | 否        | 包含 `LOAD_VAL` 的代码不会被 JIT 编译，始终走解释器          |
-| global.xxx | 否        | 同上                                          |
-| server.xxx | 否        | 同上                                          |
-| client.xxx | 否        | 同上                                          |
+| 命名空间       | JIT 是否处理  | 说明                                          |
+|------------|-----------|---------------------------------------------|
+| var.xxx    | 是         | `fastDoubleVars` 路径中复制为 double 局部变量，执行完毕后写回；运行时守卫在 var 值非数字时回退解释路径 |
+| val.xxx    | 否         | 包含 `LOAD_VAL` 的代码不会被 JIT 编译，始终走解释器          |
+| global.xxx | 读是 / 写否   | `LOAD_GLOBAL` 可编译（每次经 GlobalStorage 读取）；写入走解释器 |
+| server.xxx | 读是 / 写否   | 同上（读取仍会触发 listener）                         |
+| client.xxx | 读是 / 写否   | 同上                                          |
 
 **var 变量的并发风险：** 当 JIT 编译的代码正在执行时，var 变量被复制到 JVM 局部变量中运算，执行完毕后才写回 Context。如果 Java 端在 JIT 执行期间通过 Context 修改 var 变量，JIT 代码不会看到这个修改。这与 Java 自身的 JIT 行为一致。
 
 **函数内联的假设：** JIT 会将简单的用户自定义函数（如 `var.inc = -> { return args[0] + 1 }`）内联为纯算术运算。内联基于编译期的函数体 IR，不会在运行时重新检查 `var.inc` 是否被重新赋值。如果脚本在循环中重新定义了同名函数，JIT 代码仍然执行旧的内联逻辑。这是一个已知的限制——JIT 优化的代码假设函数定义在热循环中不会改变。
 
-**常量折叠：** 只折叠字面量常量（`LOAD_CONST`），不涉及任何命名空间变量。`val.PI = 3.14` 不会被折叠——`forceSetLocalValue` 覆写 val 是安全的。
+**常量折叠：** 只折叠字面量常量（`LOAD_CONST`），不涉及任何命名空间变量。`val.PI` 的读取不会被折叠——`forceSetLocalValue` 随时覆写 val 都是安全的。
 
 **建议：**
 - 避免在脚本执行期间从另一个线程修改同一个 Context 的 var 变量
@@ -391,7 +451,7 @@ IValue<?> result = Aria.eval(code, ctx, sandbox);
 | 配置项                 | 类型          | 默认值        | 说明                 |
 |---------------------|-------------|------------|--------------------|
 | `maxExecutionTime`  | `long`      | 0（无限制）     | 最大执行时间（毫秒）         |
-| `maxCallDepth`      | `int`       | 512        | 最大函数调用深度           |
+| `maxCallDepth`      | `int`       | 512        | 最大函数调用深度（非沙箱模式下解释器内建上限为 2048） |
 | `maxInstructions`   | `long`      | 0（无限制）     | 最大执行指令数            |
 | `allowFileSystem`   | `boolean`   | true       | 是否允许 fs 命名空间       |
 | `allowNetwork`      | `boolean`   | true       | 是否允许 net/http 命名空间 |
@@ -476,12 +536,12 @@ engine.getModuleLoader().getResolver().addSearchPath(Path.of("scripts"));
 ```java
 // 编译一次
 AriaCompiledRoutine routine = Aria.compile("rule", """
-    val.score = args[0]
-    if score >= 90 {
+    score = args[0]
+    if (score >= 90) {
         return "A"
-    } elif score >= 80 {
+    } elif (score >= 80) {
         return "B"
-    } elif score >= 70 {
+    } elif (score >= 70) {
         return "C"
     } else {
         return "D"
@@ -537,14 +597,14 @@ public class EmbeddingExample {
 
         Context ctx = Aria.createContext();
         IValue<?> result = Aria.eval("""
-            val.user = app.getUser("123")
+            user = app.getUser("123")
             return "Hello, " + user
             """, ctx);
         System.out.println(result.stringValue()); // "Hello, User-123"
 
         AriaCompiledRoutine routine = Aria.compile("sandbox-test", """
-            val.result = math.pow(args[0], 2) + math.pow(args[1], 2)
-            return math.sqrt(result)
+            sq = math.pow(args[0], 2) + math.pow(args[1], 2)
+            return math.sqrt(sq)
             """);
 
         SandboxConfig sandbox = SandboxConfig.builder()

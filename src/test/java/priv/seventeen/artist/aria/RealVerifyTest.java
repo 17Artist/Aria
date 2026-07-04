@@ -46,19 +46,19 @@ public class RealVerifyTest {
 
     // ---- 函数体内(executeInline 路径)----
     @Test void lambdaBlockAssignUpdatesOuter() throws Exception {
-        assertEquals(5.0, num("var.f=-> { var.r=0\n if (true) { r=5 }\n return r }\nreturn f()"), 1e-9);
+        assertEquals(5.0, num("var.f=-> { r=0\n if (true) { r=5 }\n return r }\nreturn f()"), 1e-9);
     }
     @Test void lambdaTryCatchUsesVar() throws Exception {
         assertEquals("x", str("var.f=-> { try { throw 'x' } catch (e) { return e } }\nreturn f()"));
     }
     @Test void lambdaTryFinally() throws Exception {
-        assertEquals(2.0, num("var.f=-> { var.r=0\n try { r=1 } finally { r=2 }\n return r }\nreturn f()"), 1e-9);
+        assertEquals(2.0, num("var.f=-> { r=0\n try { r=1 } finally { r=2 }\n return r }\nreturn f()"), 1e-9);
     }
     @Test void lambdaCatchVarShadows() throws Exception {
-        assertEquals("in", str("var.f=-> { var.e='in'\n try { throw 'b' } catch (e) { }\n return e }\nreturn f()"));
+        assertEquals("in", str("var.f=-> { e='in'\n try { throw 'b' } catch (e) { }\n return e }\nreturn f()"));
     }
     @Test void lambdaMapSpread() throws Exception {
-        assertEquals(2.0, num("var.f=-> { var.b={'x':1}\n return {...b,'y':2}.size() }\nreturn f()"), 1e-9);
+        assertEquals(2.0, num("var.f=-> { b={'x':1}\n return {...b,'y':2}.size() }\nreturn f()"), 1e-9);
     }
     @Test void lambdaMapSpreadNonMapThrows() {
         assertThrows(AriaException.class, () -> eval("var.f=-> { return {...5} }\nreturn f()"));
@@ -66,12 +66,12 @@ public class RealVerifyTest {
     // 多次调用以触发任何 fast-path 阈值
     @Test void lambdaTryCatchRepeated() throws Exception {
         assertEquals("ok", str("var.f=-> { try { throw 'ok' } catch (e) { return e } }\n" +
-            "var.last=''\nfor (i in Range(0,20)) { last = f() }\nreturn last"));
+            "last=''\nfor (i in Range(0,20)) { last = f() }\nreturn last"));
     }
 
     // ---- .aria 二进制往返(DECLARE_SCOPE / MAP_MERGE 序列化)----
     @Test void ariaRoundTripTryCatch(@TempDir Path tmp) throws Exception {
-        String code = "var.e='outer'\nvar.r=''\ntry { throw 'boom' } catch (e) { r = e }\nreturn r + '|' + e\n";
+        String code = "e='outer'\nr=''\ntry { throw 'boom' } catch (e) { r = e }\nreturn r + '|' + e\n";
         assertEquals("boom|outer", str(code));
         var prog = Aria.compile("rt1", code).getProgram();
         Path f = tmp.resolve("rt1.aria");
@@ -81,7 +81,7 @@ public class RealVerifyTest {
         assertEquals("boom|outer", res.stringValue());
     }
     @Test void ariaRoundTripMapSpread(@TempDir Path tmp) throws Exception {
-        String code = "var.b={'x':1}\nreturn {...b,'y':2}.size()\n";
+        String code = "b={'x':1}\nreturn {...b,'y':2}.size()\n";
         assertEquals(2.0, num(code), 1e-9);
         var prog = Aria.compile("rt2", code).getProgram();
         Path f = tmp.resolve("rt2.aria");
@@ -94,7 +94,7 @@ public class RealVerifyTest {
     // ---- .ariapkg 打包往返：模块含新 opcode(DECLARE_SCOPE + MAP_MERGE)----
     @Test void ariaPackageRoundTripWithNewOpcodes(@TempDir Path tmp) throws Exception {
         // 同一模块同时含 try/catch(DECLARE_SCOPE)与 map 展开(MAP_MERGE)
-        String code = "var.r=''\ntry { throw 'X' } catch (e) { r = e }\nvar.m={...{'a':1},'b':2}\nreturn r + '|' + m.size()\n";
+        String code = "r=''\ntry { throw 'X' } catch (e) { r = e }\nm={...{'a':1},'b':2}\nreturn r + '|' + m.size()\n";
         assertEquals("X|2.0", str(code)); // 直接执行基线（Shimmer 对齐：size()→2.0）
 
         var prog = Aria.compile("complex", code).getProgram();
@@ -140,9 +140,9 @@ public class RealVerifyTest {
 
     // ---- 真异步（提交线程池 + 真 Promise + 沙箱传播 + 上下文隔离）----
     @Test void asyncTryCatch() throws Exception {
-        assertEquals("z", str("var.p=async { try { throw 'z' } catch (e) { return e } }\nreturn await p"));
+        assertEquals("z", str("var.p=async { try { throw 'z' } catch (e) { return e } }\nreturn await var.p"));
     }
     @Test void asyncMapSpread() throws Exception {
-        assertEquals(2.0, num("var.p=async { return {...{'a':1},'b':2} }\nvar.m=await p\nreturn m.size()"), 1e-9);
+        assertEquals(2.0, num("var.p=async { return {...{'a':1},'b':2} }\nvar.m=await var.p\nreturn var.m.size()"), 1e-9);
     }
 }

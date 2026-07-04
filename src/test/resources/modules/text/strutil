@@ -1,7 +1,7 @@
 // 字符串工具模块（子目录 text/strutil，点号路径 import text.strutil 可解析到这里）
 export var.repeat = -> {
-    var.acc = ''
-    var.i = 0
+    acc = ''
+    i = 0
     while (i < args[1]) {
         acc = acc + args[0]
         i = i + 1

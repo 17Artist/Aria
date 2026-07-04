@@ -75,7 +75,14 @@ public class Interpreter {
         return STATIC_CALLABLES.get(name);
     }
 
-    private static final int MAX_CALL_DEPTH = 512;
+    /** Interpreter 侧构造器表查询(供 JIT rtCallByName 裸名构造器兜底,builtins-static-1)。 */
+    public static ICallable getRegisteredConstructor(String name) {
+        return name != null ? CONSTRUCTORS.get(name) : null;
+    }
+
+    // Shimmer 对齐(controlflow-16)：Shimmer 无引擎级深度限制(JVM 爆栈为界,实际可达数千层)，
+    // Aria 保留安全上限但从 512 放宽到 2048，覆盖深递归工具函数场景。
+    private static final int MAX_CALL_DEPTH = 2048;
     private static final ThreadLocal<Integer> callDepth = ThreadLocal.withInitial(() -> 0);
     private static final ThreadLocal<SandboxConfig> sandboxConfig = new ThreadLocal<>();
     private static final ThreadLocal<long[]> instructionCounter = ThreadLocal.withInitial(() -> new long[]{0});
@@ -113,6 +120,25 @@ public class Interpreter {
     }
 
     public Result execute(IRProgram program, Context context) throws AriaException {
+        return executeGuarded(program, context, true);
+    }
+
+    /**
+     * A4(jit-1/2)：供 JIT fast 数值路径的运行时入口守卫失败后回退——绕过已编译代码、
+     * 以完整解释器语义执行一次(不重编译、不改变已挂的 compiledCode)。
+     */
+    public Result executeBypassCompiled(IRProgram program, Context context) throws AriaException {
+        return executeGuarded(program, context, false);
+    }
+
+    private Result executeGuarded(IRProgram program, Context context, boolean allowCompiled) throws AriaException {
+        // Shimmer 对齐(R8)：执行边界作用域配平——RETURN/break/异常不会执行块尾 POP_SCOPE，
+        // 残留 scope 层挂在(可长驻复用的)Context ScopeStack 上：出口处 LOAD_SCOPE 在残留层创建的
+        // 绑定会被下次执行的循环体命中并跨执行累计(w3=2/4/6/8)。Shimmer BlockStatement 在任何
+        // 控制流下都 popScope 配平，故每次执行结束 scope 栈必回到进入时深度。此处统一兜底：
+        // 无论解释/编译码/异常路径，退出时弹回 baseDepth(共享栈调用方的层级不受影响)。
+        final priv.seventeen.artist.aria.context.ScopeStack scopeStack = context.getScopeStack();
+        final int baseScopeDepth = scopeStack.depth();
         SandboxConfig config = sandboxConfig.get();
         if (config != null) {
             // 沙箱模式：用 ThreadLocal 保证多线程安全
@@ -123,9 +149,10 @@ public class Interpreter {
             }
             callDepth.set(depth + 1);
             try {
-                return executeInternal(program, context);
+                return executeInternal(program, context, allowCompiled);
             } finally {
                 callDepth.set(depth);
+                while (scopeStack.depth() > baseScopeDepth) scopeStack.pop();
             }
         } else {
             // 非沙箱：per-thread 计数（解释器实例可能跨线程共享）
@@ -136,16 +163,17 @@ public class Interpreter {
             }
             cd[0] = depth + 1;
             try {
-                return executeInternal(program, context);
+                return executeInternal(program, context, allowCompiled);
             } finally {
                 cd[0] = depth;
+                while (scopeStack.depth() > baseScopeDepth) scopeStack.pop();
             }
         }
     }
 
-    private Result executeInternal(IRProgram program, Context context) throws AriaException {
+    private Result executeInternal(IRProgram program, Context context, boolean allowCompiled) throws AriaException {
         boolean sandboxActive = sandboxConfig.get() != null;
-        if (!sandboxActive && program.isCompiled()) {
+        if (allowCompiled && !sandboxActive && program.isCompiled()) {
             try {
                 IValue<?> result = program.getCompiledCode().invoke(
                         new InvocationData(context, context.getSelf(), context.getArgsRef()));
@@ -153,7 +181,14 @@ public class Interpreter {
             } catch (AriaException e) {
                 throw e;
             } catch (Exception e) {
-                program.setCompiledCode(null); // JIT 出错，回退
+                // Shimmer 对齐(jit-10)：deopt 不重放——编译码可能已执行过宿主副作用(发包/音效等)，
+                // 从头解释重跑会让副作用发生两次。标记下次走解释器，本次包装上抛。
+                // A4(jit-21 缓解确认)：deopt 后不会重复编译——下方 tryJITCompile 仅在
+                // execCount == JIT_THRESHOLD 精确相等时触发，deopt 时 execCount 已越过阈值，
+                // 该程序此后永久走解释器(函数体路径由 isJitScheduled 标志同样保证只编一次)。
+                program.setCompiledCode(null);
+                throw new AriaRuntimeException(
+                        e.getMessage() != null ? e.getMessage() : "JIT execution error", e);
             }
         }
         int execCount = program.incrementExecCount();
@@ -181,7 +216,9 @@ public class Interpreter {
                 int ki = inst.a;
                 if (ki >= 0 && ki < keys.length) {
                     switch (inst.opcode) {
-                        case LOAD_VAR, STORE_VAR -> {
+                        // Shimmer 对齐(variables-1/async-1)：补 VAR_INC/VAR_ADD_CONST/VAR_ADD_REG——
+                        // 此前预扫描漏掉这三个复合指令，脚本里 var 键只出现在复合赋值时 varRefs 槽为 null → NPE。
+                        case LOAD_VAR, STORE_VAR, VAR_INC, VAR_ADD_CONST, VAR_ADD_REG -> {
                             if (varRefs[ki] == null) varRefs[ki] = context.getLocalStorage().getVarVariable(keys[ki]);
                         }
                         case LOAD_VAL -> {
@@ -204,6 +241,8 @@ public class Interpreter {
 
         int pc = 0;
         final int len = code.length;
+        // 回跳计数：每 1024 次回跳检查一次线程中断(controlflow-15)，开销可忽略
+        int backwardJumps = 0;
 
         // try-catch 栈：存储 (catchPC, scopeDepth)
         final Deque<int[]> tryStack = new ArrayDeque<>();
@@ -244,12 +283,10 @@ public class Interpreter {
                         break;
                     }
                     case LOAD_VAL: {
-                        // val 存储优先(宿主 forceSetLocalValue 注入的不可变值);为空则回退 scope→var——
-                        // 因为脚本侧 `val.x = ...` 实际编译成 STORE_SCOPE(见 Compiler.emitStore),
-                        // 否则 `val.x` 点读取不到脚本声明的 val(裸读经 scope 回退可读,点读此前恒 none)。
+                        // Shimmer 对齐(variables-9)：val.x 只读 val 存储(宿主 forceSetValue 注入)，
+                        // 不再回退 scope/var——Shimmer 的 val 与裸名/var 是完全隔离的命名空间。
                         IValue<?> lv = valRefs[inst.a].getValue();
-                        registers[inst.dst] = (lv == null || lv instanceof NoneValue)
-                                ? resolveValFallback(context, keys[inst.a], lv) : lv;
+                        registers[inst.dst] = lv != null ? lv : NoneValue.NONE;
                         break;
                     }
                     case LOAD_GLOBAL: {
@@ -261,13 +298,9 @@ public class Interpreter {
                         break;
                     }
                     case STORE_VAL: {
-                        // val 不可变:初始化一次,重赋(脚本端)报错;宿主 forceSetLocalValue 不走此路,可覆盖。
-                        ValueReference vref = context.getLocalStorage().getValVariable(keys[inst.a]);
-                        if (vref.isAssigned()) {
-                            throw new AriaRuntimeException("Cannot reassign immutable val '"
-                                    + keys[inst.a].getName() + "' (use var for mutable variables)");
-                        }
-                        vref.setValue(registers[inst.dst]);
+                        // Shimmer 对齐(variables-8)：脚本写 val 一律静默 no-op(对照 Shimmer
+                        // ValueReference.setValue 返回入参不存储)；只有宿主 forceSetValue 可写。
+                        // 不再"首次可写/再写抛 Cannot reassign"。
                         break;
                     }
                     case LOAD_CLIENT: {
@@ -295,28 +328,11 @@ public class Interpreter {
                         break;
                     }
                     case LOAD_SCOPE: {
+                        // Shimmer 对齐(variables-7/controlflow-13)：裸名只查作用域栈(未命中即新建 none 引用，
+                        // 对照 Shimmer ScopeStack.get)，删除 var→val 回退——裸名与 var./val. 完全隔离。
                         VariableReference ref = scopeRefs != null ? scopeRefs[inst.a] : null;
                         if (ref == null) {
-                            VariableReference scopeRef = context.getScopeStack().getExisting(keys[inst.a]);
-                            if (scopeRef != null) {
-                                ref = scopeRef;
-                            } else {
-                                // Fallback: 查 var 存储
-                                VariableReference varRef = context.getLocalStorage().getVarVariableExisting(keys[inst.a]);
-                                if (varRef != null) {
-                                    ref = varRef;
-                                } else {
-                                    // 再回退 val 存储:脚本 `val.x = v` 写入 val(ValueReference),裸读 `x` 也应取到。
-                                    // ValueReference 与 scopeRefs(VariableReference[])类型不同,不缓存,直接读后退出。
-                                    ValueReference valRef = context.getLocalStorage().getValVariableExisting(keys[inst.a]);
-                                    if (valRef != null && valRef.isAssigned()) {
-                                        registers[inst.dst] = valRef.getValue();
-                                        break;
-                                    }
-                                    // 最终 fallback: 在 scope 中创建
-                                    ref = context.getScopeStack().get(keys[inst.a]);
-                                }
-                            }
+                            ref = context.getScopeStack().get(keys[inst.a]);
                             if (scopeRefs != null) scopeRefs[inst.a] = ref;
                         }
                         registers[inst.dst] = ref.getValue();
@@ -346,18 +362,11 @@ public class Interpreter {
                         break;
                     }
                     case STORE_SCOPE: {
+                        // Shimmer 对齐(variables-7/controlflow-13)：裸名赋值只写作用域栈——
+                        // 更新已存在绑定或在当前作用域新建，删除"写穿 var 存储"回退。
                         VariableReference ref = scopeRefs != null ? scopeRefs[inst.a] : null;
                         if (ref == null) {
-                            // 裸名赋值应更新已存在的绑定，而非在当前块作用域新建影子（否则块内 `x=v`
-                            // 对外层 var/scope 变量的写入会随 POP_SCOPE 丢失）。解析顺序与 LOAD_SCOPE 对称：
-                            // 作用域链已存在 → var 存储已存在 → 都没有才在当前作用域新建。
-                            ref = context.getScopeStack().getExisting(keys[inst.a]);
-                            if (ref == null) {
-                                ref = context.getLocalStorage().getVarVariableExisting(keys[inst.a]);
-                            }
-                            if (ref == null) {
-                                ref = context.getScopeStack().get(keys[inst.a]);
-                            }
+                            ref = context.getScopeStack().get(keys[inst.a]);
                             if (scopeRefs != null) scopeRefs[inst.a] = ref;
                         }
                         ref.setValue(registers[inst.dst]);
@@ -376,160 +385,121 @@ public class Interpreter {
                         registers[inst.dst] = new ListValue(list);
                         break;
                     }
+                    // Shimmer 对齐(operators-1/gui-chain-2/variables-5)：删除全部"目标寄存器 NumberValue
+                    // 原地复用(nv.value=r)"优化——寄存器对象经 STORE_SCOPE/STORE_GLOBAL/SET_PROP/SET_INDEX/
+                    // list.add/CALL 参数逃逸后，循环第二轮原地改写会静默腐坏已存值/常量池。数字值回到事实不可变，
+                    // 每次算术一律 new NumberValue(与 Shimmer IData/NumberValue 一致)。
                     case ADD: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = ln.value + rn.value;
-                            IValue<?> dst = registers[inst.dst];
-                            if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
-                            else { registers[inst.dst] = new NumberValue(r); }
-                        } else if (la instanceof MutableStringValue msv) {
-                            // 累加器模式：已是 MutableStringValue，原地追加，零分配
-                            registers[inst.dst] = msv.append(ra.stringValue());
-                        } else if (la instanceof StringValue ls && ra instanceof StringValue rs
-                                && !ls.canBeNumber() && !rs.canBeNumber()) {
-                            // 第一次字符串拼接：直接升级为 MutableStringValue，后续在同一 builder 上追加
-                            registers[inst.dst] = new MutableStringValue(ls.stringValue()).append(rs.stringValue());
-                        } else if (la instanceof RopeString lrs) {
-                            // Rope 累加：flatten 一次转成 MutableStringValue，后续走上面的 msv 分支
-                            registers[inst.dst] = new MutableStringValue(lrs.stringValue()).append(ra.stringValue());
+                            registers[inst.dst] = new NumberValue(ln.value + rn.value);
                         } else { registers[inst.dst] = la.add(ra); }
                         break;
                     }
                     case SUB: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = ln.value - rn.value;
-                            IValue<?> dst = registers[inst.dst];
-                            if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
-                            else { registers[inst.dst] = new NumberValue(r); }
+                            registers[inst.dst] = new NumberValue(ln.value - rn.value);
                         } else { registers[inst.dst] = la.sub(ra); }
                         break;
                     }
                     case MUL: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = ln.value * rn.value;
-                            IValue<?> dst = registers[inst.dst];
-                            if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
-                            else { registers[inst.dst] = new NumberValue(r); }
+                            registers[inst.dst] = new NumberValue(ln.value * rn.value);
                         } else { registers[inst.dst] = la.mul(ra); }
                         break;
                     }
                     case DIV: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = rn.value == 0 ? 0 : ln.value / rn.value; // Shimmer 对齐：除零->0
-                            IValue<?> dst = registers[inst.dst];
-                            if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
-                            else { registers[inst.dst] = new NumberValue(r); }
+                            registers[inst.dst] = new NumberValue(rn.value == 0 ? 0 : ln.value / rn.value); // Shimmer 对齐：除零->0
                         } else { registers[inst.dst] = la.div(ra); }
                         break;
                     }
                     case MOD: {
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
-                            double r = rn.value == 0 ? 0 : ln.value % rn.value; // Shimmer 对齐：取余零->0
-                            IValue<?> dst = registers[inst.dst];
-                            if (dst instanceof NumberValue nv && dst != la && dst != ra) { nv.value = r; }
-                            else { registers[inst.dst] = new NumberValue(r); }
+                            registers[inst.dst] = new NumberValue(rn.value == 0 ? 0 : ln.value % rn.value); // Shimmer 对齐：取余零->0
                         } else { registers[inst.dst] = la.mod(ra); }
                         break;
                     }
                     case NEG: {
-                        double r = -registers[inst.a].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        // Shimmer 对齐(operators-8, Unary.java NEGATIVE)：数字取负；字符串走 nc()
+                        // (不可数抛"字符串内容非数字…")；canMath(none/boolean)取负 doubleValue；
+                        // 其余(list/map/StoreOnly)抛"不支持的反转操作"。
+                        registers[inst.dst] = negate(registers[inst.a]);
                         break;
                     }
                     case INC: {
-                        double r = registers[inst.a].numberValue() + 1;
-                        registers[inst.dst] = new NumberValue(r);
+                        // Shimmer 对齐(operators-8, Unary INCREMENT)：走加法值模型("a"++ → "a1.0")。
+                        registers[inst.dst] = registers[inst.a].add(NumberValue.of(1));
                         break;
                     }
                     case DEC: {
-                        double r = registers[inst.a].numberValue() - 1;
-                        registers[inst.dst] = new NumberValue(r);
+                        registers[inst.dst] = registers[inst.a].sub(NumberValue.of(1));
                         break;
                     }
                     case ADD_NUM: {
-                        double r = registers[inst.a].numberValue() + registers[inst.b].numberValue();
-                        IValue<?> dst = registers[inst.dst];
-                        if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                registers[inst.a].numberValue() + registers[inst.b].numberValue());
                         break;
                     }
                     case SUB_NUM: {
-                        double r = registers[inst.a].numberValue() - registers[inst.b].numberValue();
-                        IValue<?> dst = registers[inst.dst];
-                        if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                registers[inst.a].numberValue() - registers[inst.b].numberValue());
                         break;
                     }
                     case MUL_NUM: {
-                        double r = registers[inst.a].numberValue() * registers[inst.b].numberValue();
-                        IValue<?> dst = registers[inst.dst];
-                        if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                registers[inst.a].numberValue() * registers[inst.b].numberValue());
                         break;
                     }
                     case DIV_NUM: {
                         double divisor = registers[inst.b].numberValue();
-                        double r = divisor == 0 ? 0 : registers[inst.a].numberValue() / divisor; // Shimmer 对齐：除零->0
-                        IValue<?> dst = registers[inst.dst];
-                        if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                divisor == 0 ? 0 : registers[inst.a].numberValue() / divisor); // Shimmer 对齐：除零->0
                         break;
                     }
                     case MOD_NUM: {
                         double divisor = registers[inst.b].numberValue();
-                        double r = divisor == 0 ? 0 : registers[inst.a].numberValue() % divisor;
-                        IValue<?> dst = registers[inst.dst];
-                        if (dst instanceof NumberValue nv && dst != registers[inst.a] && dst != registers[inst.b]) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                divisor == 0 ? 0 : registers[inst.a].numberValue() % divisor);
                         break;
                     }
 
                     case BIT_AND: {
-                        double r = (int) registers[inst.a].numberValue() & (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() & (int) registers[inst.b].numberValue());
                         break;
                     }
                     case BIT_OR: {
-                        double r = (int) registers[inst.a].numberValue() | (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() | (int) registers[inst.b].numberValue());
                         break;
                     }
                     case BIT_XOR: {
-                        double r = (int) registers[inst.a].numberValue() ^ (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() ^ (int) registers[inst.b].numberValue());
                         break;
                     }
                     case BIT_NOT: {
-                        double r = ~(int) registers[inst.a].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(~(int) registers[inst.a].numberValue());
                         break;
                     }
                     case SHL: {
-                        double r = (int) registers[inst.a].numberValue() << (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() << (int) registers[inst.b].numberValue());
                         break;
                     }
                     case SHR: {
-                        double r = (int) registers[inst.a].numberValue() >> (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() >> (int) registers[inst.b].numberValue());
                         break;
                     }
                     case USHR: {
-                        double r = (int) registers[inst.a].numberValue() >>> (int) registers[inst.b].numberValue();
-                        if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                        else { registers[inst.dst] = new NumberValue(r); }
+                        registers[inst.dst] = new NumberValue(
+                                (int) registers[inst.a].numberValue() >>> (int) registers[inst.b].numberValue());
                         break;
                     }
 
@@ -651,6 +621,13 @@ public class Interpreter {
                             registers[inst.dst] = new NumberValue(lv.jvmValue().size());
                         } else if (obj instanceof StringValue sv && "length".equals(propName)) {
                             registers[inst.dst] = new NumberValue(sv.stringValue().length());
+                        } else if (obj instanceof StoreOnlyValue<?> sovProp
+                                && CallableManager.INSTANCE.getObjectFunction(receiverClass(obj), propName) != null) {
+                            // Shimmer 对齐(interop-1)：StoreOnlyValue 宿主对象的注册函数
+                            // (findMapping 沿类层级/接口命中)——属性读即零参调用(对照 Dot.getNode)。
+                            registers[inst.dst] = callObjectFunction(
+                                    CallableManager.INSTANCE.getObjectFunction(receiverClass(obj), propName),
+                                    context, obj, EMPTY_ARGS);
                         } else {
                             // 尝试静态方法查找（作为方法引用）
                             ICallable staticCallable = STATIC_CALLABLES.get(propName);
@@ -673,6 +650,11 @@ public class Interpreter {
                             break;
                         }
                         if (obj instanceof ObjectValue<?> ov) {
+                            // Shimmer 对齐(interop-13)：目标名命中注册对象函数 → LHS 非变量，
+                            // 抛"非变量类型无法进行赋值运算"(对照 Shimmer Dot.getNode + Assignment)。
+                            if (CallableManager.INSTANCE.getObjectFunction(receiverClass(obj), propName) != null) {
+                                throw new AriaRuntimeException("非变量类型无法进行赋值运算");
+                            }
                             IAriaObject so = ov.jvmValue();
                             Variable v = so.getVariable(propName);
                             v.setValue(val);
@@ -707,6 +689,9 @@ public class Interpreter {
                     }
 
                     case GET_INDEX: {
+                        // inst.c 模式：0=普通索引(list 越界抛)、1=for-in 迭代(终结返回 ITER_END 哨兵,
+                        // Shimmer 对齐 controlflow-09：none 元素不再截断遍历)、2=args 索引(越界→none,
+                        // Shimmer 对齐 controlflow-07 ArgsDot)。
                         IValue<?> obj = registers[inst.a];
                         if (inst.b == -1) {
                             // 空索引 — 返回对象本身
@@ -717,9 +702,11 @@ public class Interpreter {
                                 int index = (int) idx.numberValue();
                                 List<IValue<?>> list = lv.jvmValue();
                                 if (index >= 0 && index < list.size()) {
-                                    registers[inst.dst] = list.get(index);
+                                    // Shimmer 对齐(interop-3)：map/list 读出的惰性属性(CWI)在消费点自动求值
+                                    registers[inst.dst] = resolveLazyProperty(list.get(index), context);
                                 } else if (inst.c == 1) {
-                                    // for-in 迭代哨兵：越界=终止，保持 none
+                                    registers[inst.dst] = NoneValue.ITER_END;
+                                } else if (inst.c == 2) {
                                     registers[inst.dst] = NoneValue.NONE;
                                 } else {
                                     // Shimmer 对齐：显式索引越界抛异常（而非静默 none）
@@ -727,7 +714,7 @@ public class Interpreter {
                                 }
                             } else if (obj instanceof MapValue mv) {
                                 if (inst.c == 1) {
-                                    // for-in 迭代:第 idx 个 [key,value] 对
+                                    // for-in 迭代:第 idx 个 [key,value] 对(越界→ITER_END)
                                     registers[inst.dst] = mapEntryAt(mv.jvmValue(), (int) idx.numberValue());
                                 } else {
                                     IValue<?> val = mv.jvmValue().get(idx);
@@ -735,30 +722,36 @@ public class Interpreter {
                                         // 尝试用字符串键
                                         val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                                     }
-                                    registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                                    // Shimmer 对齐(interop-3)：self.actions['x'] 读出的 CWI 自动求值
+                                    registers[inst.dst] = resolveLazyProperty(val, context);
                                 }
                             } else if (obj instanceof SmallMapValue sm) {
-                                registers[inst.dst] = sm.get(idx);
+                                if (inst.c == 1) {
+                                    registers[inst.dst] = mapEntryAt(sm.jvmValue(), (int) idx.numberValue());
+                                } else {
+                                    registers[inst.dst] = resolveLazyProperty(sm.get(idx), context);
+                                }
                             } else if (obj instanceof StringValue sv) {
                                 int index = (int) idx.numberValue();
                                 String s = sv.stringValue();
                                 if (index >= 0 && index < s.length()) {
                                     registers[inst.dst] = new StringValue(String.valueOf(s.charAt(index)));
                                 } else {
-                                    registers[inst.dst] = NoneValue.NONE;
+                                    registers[inst.dst] = inst.c == 1 ? NoneValue.ITER_END : NoneValue.NONE;
                                 }
                             } else if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof RangeObject range) {
-                                // Range 快速路径：复用 NumberValue 对象
+                                // Shimmer 对齐(controlflow-01/02):for-in range 双端闭(i <= end),start>end 自然为空。
+                                // (operators-1)：不再原地复用目标寄存器 NumberValue。
                                 double val = range.getStart() + idx.numberValue() * range.getStep();
-                                if (range.getStep() > 0 ? val < range.getEnd() : val > range.getEnd()) {
-                                    if (registers[inst.dst] instanceof NumberValue nv) {
-                                        nv.value = val; // 直接修改，避免 new
-                                    } else {
-                                        registers[inst.dst] = new NumberValue(val);
-                                    }
+                                if (range.getStep() > 0 ? val <= range.getEnd() : val >= range.getEnd()) {
+                                    registers[inst.dst] = new NumberValue(val);
                                 } else {
-                                    registers[inst.dst] = NoneValue.NONE;
+                                    registers[inst.dst] = inst.c == 1 ? NoneValue.ITER_END : NoneValue.NONE;
                                 }
+                            } else if (inst.c == 1) {
+                                // for-in 遇不可迭代对象：立即终结(0 次迭代)，不得返回普通 none
+                                // (哨兵判定是身份比较，普通 none 会导致死循环)。
+                                registers[inst.dst] = NoneValue.ITER_END;
                             } else if (obj instanceof ObjectValue<?> ov) {
                                 // IAriaObject 元素访问: obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
                                 Variable elem = ov.jvmValue().getElement(idx.stringValue());
@@ -837,7 +830,10 @@ public class Interpreter {
                                     if (next.opcode == IROpCode.VAR_ADD_REG && next.b == inst.dst) {
                                         IValue<?> cur = varRefs[next.a].getValue();
                                         if (cur instanceof NumberValue nv) {
-                                            varRefs[next.a].setValue(new NumberValue(nv.value + callResult));
+                                            NumberValue fused = new NumberValue(nv.value + callResult);
+                                            varRefs[next.a].setValue(fused);
+                                            // Shimmer 对齐(R1)：融合路径同样把新值写 VAR_ADD_REG 的 dst
+                                            if (next.dst >= 0) registers[next.dst] = fused;
                                             pc += 2; // 跳过 CALL 和 VAR_ADD_REG
                                             continue;
                                         }
@@ -865,17 +861,23 @@ public class Interpreter {
                                 for (int i = 0; i < argCount; i++) callArgs[i] = registers[argBase + i];
                                 registers[inst.dst] = jcm.newInstance(callArgs);
                             } else {
-                                // Shimmer 对齐(用户要求)：非函数值加括号 → 吞掉括号，返回原值
-                                registers[inst.dst] = callee;
+                                // Shimmer 对齐(R5, Dot.getNodePostfix Parenthesis)：带参调用非函数值 → 抛
+                                // "不支持的后缀运算:"；空括号 () 在 Shimmer 被解析器丢弃(值原样保留)→ 吞括号。
+                                registers[inst.dst] = callNonCallable(callee, argCount);
                             }
                         } else {
                             // 尝试作为 ICallable 调用
                             if (callee instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof ICallable ic) {
                                 registers[inst.dst] = ic.invoke(
                                         new InvocationData(context, null, registers, argBase, argCount));
+                            } else if (callee instanceof StoreOnlyValue<?> sov2
+                                    && sov2.jvmValue() instanceof CallableWithInvoker cwi) {
+                                // Shimmer 对齐(interop-3)：惰性属性/动作(CWI)加括号 → 带参调用；
+                                // 走虚方法 invoke 保 AttributeCallable 覆写(self 上下文)(interop-4)。
+                                registers[inst.dst] = cwi.invoke(context, copyArgs(registers, argBase, argCount));
                             } else {
-                                // Shimmer 对齐：非函数值加括号 → 吞掉括号，返回原值（5() -> 5，"x"() -> "x"）
-                                registers[inst.dst] = callee;
+                                // Shimmer 对齐(R5)：带参 → 抛"不支持的后缀运算:"；空括号 → 吞(5()→5,"x"()→"x")
+                                registers[inst.dst] = callNonCallable(callee, argCount);
                             }
                         }
                         break;
@@ -927,6 +929,16 @@ public class Interpreter {
                                 }
                             }
                         }
+                        // Shimmer 对齐(interop-12, Dot.getNode 顺序)：注册对象函数优先于 getVariable——
+                        // 注册方法永远压过同名宿主属性(三条分派路径统一为此序)。
+                        ICallable objFunc = CallableManager.INSTANCE
+                                .getObjectFunction(receiverClass(obj), methodName);
+                        if (objFunc != null) {
+                            inst.cache = new MethodCache(receiverClass(obj), objFunc);
+                            registers[inst.dst] = callObjectFunction(objFunc, context, obj, callArgs);
+                            break;
+                        }
+
                         if (obj instanceof ObjectValue<?> ov) {
                             IAriaObject so = ov.jvmValue();
                             Variable v = so.getVariable(methodName);
@@ -934,6 +946,12 @@ public class Interpreter {
                             if (method instanceof FunctionValue fv) {
                                 Context callCtx = context.createCallContext(obj, callArgs);
                                 registers[inst.dst] = fv.getCallable().invoke(new InvocationData(callCtx, obj, callArgs));
+                                break;
+                            }
+                            // Shimmer 对齐(interop-3/4)：属性是惰性 CWI(AttributeCallable) → 带参虚调用
+                            if (method instanceof StoreOnlyValue<?> sovM
+                                    && sovM.jvmValue() instanceof CallableWithInvoker cwiM) {
+                                registers[inst.dst] = cwiM.invoke(context, callArgs);
                                 break;
                             }
                         }
@@ -946,22 +964,14 @@ public class Interpreter {
                             break;
                         }
 
-                        // 尝试 CallableManager 对象函数注册表（带缓存）
-                        ICallable objFunc = CallableManager.INSTANCE
-                                .getObjectFunction(receiverClass(obj), methodName);
-                        if (objFunc != null) {
-                            inst.cache = new MethodCache(receiverClass(obj), objFunc);
-                            registers[inst.dst] = callObjectFunction(objFunc, context, obj, callArgs);
-                            break;
-                        }
-
                         // 通用方法查找
                         ICallable genericMethod = STATIC_CALLABLES.get(methodName);
                         if (genericMethod != null) {
                             registers[inst.dst] = genericMethod.invoke(new InvocationData(context, obj, callArgs));
                         } else {
-                            // Shimmer 对齐(用户要求)：obj.field() 中 field 非函数 → 吞掉括号，返回 obj.field 的成员值
-                            registers[inst.dst] = memberOf(obj, methodName);
+                            // Shimmer 对齐(R5 实测校正)：obj.field(带参) 中 field 非函数 → 抛"不支持的后缀运算:"
+                            // (Shimmer Parenthesis 只允许 CWI)；空括号 () 被 Shimmer 解析器丢弃 → 返回成员值。
+                            registers[inst.dst] = callNonCallable(memberOf(obj, methodName), argCount);
                         }
                         break;
                     }
@@ -969,7 +979,9 @@ public class Interpreter {
                         int argCount = inst.b;
                         int argBase = inst.a;
 
-                        ICallable cached = (ICallable) inst.cache;
+                        // Shimmer 对齐(jit-11)：inst.cache 可能被 JIT 写入 StaticCallCache——
+                        // 强转前 instanceof 检查，非 ICallable 视为未缓存(不再 CCE 永久报错)。
+                        ICallable cached = inst.cache instanceof ICallable ic ? ic : null;
                         if (cached != null) {
                             // 沙箱激活时，cache 命中也必须过命名空间检查（防止"先无沙箱预热 cache、
                             // 后加沙箱复用同一已编译 routine"绕过检查）。仅在沙箱激活时有开销。
@@ -981,21 +993,17 @@ public class Interpreter {
                                     throw new AriaRuntimeException("Sandbox: namespace '" + hns + "' is not allowed");
                                 }
                             }
-                            // FastUnaryLambda: 零分配，纯 double
+                            // FastUnaryLambda: 纯 double(operators-1：不再原地复用 dst 寄存器)
                             if (cached instanceof FastUnaryLambda ful
                                     && argCount == 1 && registers[argBase] instanceof NumberValue na) {
-                                double r = ful.invokeFastDouble(na.value);
-                                if (registers[inst.dst] instanceof NumberValue nv) { nv.value = r; }
-                                else { registers[inst.dst] = new NumberValue(r); }
+                                registers[inst.dst] = new NumberValue(ful.invokeFastDouble(na.value));
                                 break;
                             }
-                            // FastBinaryLambda: 零分配，纯 double
+                            // FastBinaryLambda: 纯 double(operators-1：不再原地复用 dst 寄存器)
                             if (cached instanceof FastBinaryLambda fbl
                                     && argCount == 2 && registers[argBase] instanceof NumberValue na2
                                     && registers[argBase + 1] instanceof NumberValue nb) {
-                                double r = fbl.invokeFastDouble(na2.value, nb.value);
-                                if (registers[inst.dst] instanceof NumberValue nv2) { nv2.value = r; }
-                                else { registers[inst.dst] = new NumberValue(r); }
+                                registers[inst.dst] = new NumberValue(fbl.invokeFastDouble(na2.value, nb.value));
                                 break;
                             }
                             // 通用缓存路径：分配参数数组，直接 invoke
@@ -1033,8 +1041,7 @@ public class Interpreter {
                                 default -> Double.NaN;
                             };
                             if (!Double.isNaN(result)) {
-                                if (registers[inst.dst] instanceof NumberValue d) { d.value = result; }
-                                else { registers[inst.dst] = new NumberValue(result); }
+                                registers[inst.dst] = new NumberValue(result); // operators-1：不原地复用 dst
                                 break;
                             }
                         }
@@ -1079,8 +1086,15 @@ public class Interpreter {
                         } else if (fn != null && fn.indexOf('.') >= 0) {
                             // ns.method(args) 形式 — 对象方法分派
                             int dot = fn.indexOf('.');
-                            IValue<?> obj = resolveVariable(context, fn.substring(0, dot));
+                            String baseName = fn.substring(0, dot);
                             String methodName = fn.substring(dot + 1);
+                            IValue<?> obj = resolveVariable(context, baseName);
+                            // Shimmer 对齐(builtins-static-6)：命名空间存在但函数不存在且 baseName 也不是
+                            // 变量 → 抛错(Shimmer 在 AST 期抛"点运算解析工具集函数不存在"，Aria 移到运行期)。
+                            if ((obj == null || obj instanceof NoneValue)
+                                    && CallableManager.INSTANCE.hasStaticNamespace(baseName)) {
+                                throw new AriaRuntimeException("点运算解析工具集函数不存在: " + fn);
+                            }
                             registers[inst.dst] = dispatchMethodCall(context, obj, methodName, callArgs, argCount);
                         } else {
                             // scope/var 中的函数值
@@ -1095,10 +1109,23 @@ public class Interpreter {
                                 }
                                 registers[inst.dst] = ((ICallable) inst.cache).invoke(new InvocationData(context, null, callArgs));
                             } else if (fnVal instanceof StoreOnlyValue<?> sovCall && sovCall.jvmValue() instanceof CallableWithInvoker cwiCall) {
-                                inst.cache = cwiCall.getCallable();
-                                registers[inst.dst] = cwiCall.getCallable().invoke(new InvocationData(context, null, callArgs));
+                                // Shimmer 对齐(interop-4)：走虚方法 invoke 保 AttributeCallable 覆写；
+                                // 不缓存 getCallable()(缓存会绕过覆写)。
+                                registers[inst.dst] = cwiCall.invoke(context, callArgs);
                             } else {
-                                registers[inst.dst] = NoneValue.NONE;
+                                // Shimmer 对齐(builtins-static-1)：裸名全 miss 后回查构造器表——
+                                // Shimmer 对裸调用先查 hasConstructor("range")，小写 range(1,3) walk 到构造器。
+                                ICallable ctorFallback = CONSTRUCTORS.get(fn);
+                                if (ctorFallback == null && fn != null) {
+                                    ctorFallback = CallableManager.INSTANCE.getConstructor(fn);
+                                }
+                                if (ctorFallback != null) {
+                                    registers[inst.dst] = ctorFallback.invoke(new InvocationData(context, null, callArgs));
+                                } else {
+                                    // Shimmer 对齐(R5)：带参调用不可调用值(含 none/未定义) → 抛
+                                    // "不支持的后缀运算:"；空括号 → 吞括号返回解析到的值(x()→x,undefined()→none)。
+                                    registers[inst.dst] = callNonCallable(fnVal, argCount);
+                                }
                             }
                         }
                         break;
@@ -1140,18 +1167,28 @@ public class Interpreter {
                     }
                     case NEW_ASYNC: {
                         // async { body }：把 body 子程序提交线程池执行，产出真 Promise。
+                        // Shimmer 对齐(async-2/3/4/5, AsyncStatement)：异步上下文用全新 ScopeStack——
+                        // 与外层临时(scope)变量完全隔离；只共享 var/global/server/client(经 storage)
+                        // 与 self/args(显式透传，不再抹成 EMPTY_ARGS)。不再 snapshotForClosure 共享引用。
                         final IRProgram asyncBody = subPrograms[inst.a];
-                        final Context capturedCtx = context.snapshotForClosure(); // 闭包捕获外层 scope/var/self/args
+                        final Context parentCtx = context;
+                        final IValue<?> capturedSelf = context.getSelf();
+                        final IValue<?>[] capturedArgs = context.getArgsRef();
                         final SandboxConfig capturedSb = sandboxConfig.get();      // 沙箱随任务传播到 worker 线程
                         final java.util.concurrent.CompletableFuture<IValue<?>> future =
                                 new java.util.concurrent.CompletableFuture<>();
                         ThreadPoolManager.INSTANCE.executor().submit(() -> {
                             try {
                                 if (capturedSb != null) Interpreter.setSandbox(capturedSb);
-                                Context asyncCtx = capturedCtx.createCallContext(capturedCtx.getSelf(), EMPTY_ARGS);
+                                Context asyncCtx = parentCtx.createAsyncContext();
+                                asyncCtx.setSelf(capturedSelf);
+                                asyncCtx.setArgs(capturedArgs);
                                 IValue<?> r = new Interpreter().execute(asyncBody, asyncCtx).getValue();
                                 future.complete(r != null ? r : NoneValue.NONE);
                             } catch (Throwable t) {
+                                // Shimmer 对齐(async-5)：fire-and-forget 异常打印堆栈(Shimmer AsyncStatement
+                                // catch+printStackTrace)；await 消费路径仍经 completeExceptionally 浮出。
+                                t.printStackTrace();
                                 future.completeExceptionally(t);
                             } finally {
                                 if (capturedSb != null) Interpreter.clearSandbox();
@@ -1259,22 +1296,38 @@ public class Interpreter {
                         break;
                     }
                     case JUMP:
+                        // Shimmer 对齐(controlflow-15)：回跳(pc 减小)周期性检查线程中断，宿主可回收失控循环。
+                        if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                && Thread.currentThread().isInterrupted()) {
+                            throw new AriaRuntimeException("脚本被中断");
+                        }
                         pc = inst.a;
                         continue; // 跳过 pc++
                     case JUMP_IF_TRUE:
                         if (registers[inst.dst].booleanValue()) {
+                            if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                    && Thread.currentThread().isInterrupted()) {
+                                throw new AriaRuntimeException("脚本被中断");
+                            }
                             pc = inst.a;
                             continue;
                         }
                         break;
                     case JUMP_IF_FALSE:
                         if (!registers[inst.dst].booleanValue()) {
+                            if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                    && Thread.currentThread().isInterrupted()) {
+                                throw new AriaRuntimeException("脚本被中断");
+                            }
                             pc = inst.a;
                             continue;
                         }
                         break;
                     case JUMP_IF_NONE:
-                        if (registers[inst.dst] instanceof NoneValue) {
+                        // inst.c==1：for-in 终结判定——只认 ITER_END 哨兵(身份比较)，普通 none 元素
+                        // 照常进入循环体(Shimmer 对齐 controlflow-09)。其余用途(?? / ?.)仍按 none 判。
+                        if (inst.c == 1 ? registers[inst.dst] == NoneValue.ITER_END
+                                : registers[inst.dst] instanceof NoneValue) {
                             pc = inst.a;
                             continue;
                         }
@@ -1356,8 +1409,8 @@ public class Interpreter {
                         for (int i = 0; i < count; i++) {
                             sb.append(registers[baseReg + i].stringValue());
                         }
-                        // concat 路径：跳过 Double.parseDouble 探测
-                        registers[inst.dst] = new StringValue(sb.toString(), true);
+                        // Shimmer 对齐(gui-chain-10):普通构造器,canBeNumber 重算(插值 "42" 参与 +/== 走数值)。
+                        registers[inst.dst] = new StringValue(sb.toString());
                         break;
                     }
 
@@ -1579,48 +1632,53 @@ public class Interpreter {
                     case MOVE:
                         registers[inst.dst] = registers[inst.a];
                         break;
+                    case AUTO_INVOKE:
+                        // Shimmer 对齐(R2 系, Assignment.getResult)：RHS 裸变量读若为可调用值 → 零参调用取结果
+                        registers[inst.dst] = autoInvokeIfCallable(registers[inst.dst], context);
+                        break;
                     case NOP:
                         break;
 
                     case VAR_INC: {
                         // var[a] += 1
-                        IValue<?> cur = varRefs[inst.a].getValue();
-                        if (cur instanceof NumberValue nv) {
-                            varRefs[inst.a].setValue(new NumberValue(nv.value + 1));
-                        }
+                        // Shimmer 对齐(variables-1/2)：null 守卫(预扫描已补 VAR_*，双保险)；非数字走通用
+                        // 加法值模型(none+1=1、"5"+1=6.0、"a"+1="a1.0")，不再静默跳过。
+                        // Shimmer 对齐(R1)：结果写回 dst 寄存器——赋值语句值=新值(尾语句隐式返回可见)。
+                        VariableReference ref = varRefs[inst.a];
+                        if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
+                        IValue<?> cur = ref.getValue();
+                        IValue<?> nv2 = (cur instanceof NumberValue nv)
+                                ? new NumberValue(nv.value + 1)
+                                : cur.add(new NumberValue(1));
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                         break;
                     }
                     case VAR_ADD_CONST: {
-                        // var[a] += const[b]
-                        IValue<?> cur = varRefs[inst.a].getValue();
+                        // var[a] += const[b](variables-1：null 守卫；R1：结果写 dst)
+                        VariableReference ref = varRefs[inst.a];
+                        if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
+                        IValue<?> cur = ref.getValue();
                         IValue<?> c = constants[inst.b];
-                        if (cur instanceof NumberValue nv && c instanceof NumberValue cv) {
-                            varRefs[inst.a].setValue(new NumberValue(nv.value + cv.value));
-                        } else {
-                            varRefs[inst.a].setValue(cur.add(c));
-                        }
+                        IValue<?> nv2 = (cur instanceof NumberValue nv && c instanceof NumberValue cv)
+                                ? new NumberValue(nv.value + cv.value)
+                                : cur.add(c);
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                         break;
                     }
                     case VAR_ADD_REG: {
-                        // var[a] += r[b]
-                        IValue<?> cur = varRefs[inst.a].getValue();
+                        // var[a] += r[b](variables-1：null 守卫；R1：结果写 dst)
+                        // Shimmer 对齐(operators-2/3):删字符串累加器分支,一律 cur.add(val) 产不可变值。
+                        VariableReference ref = varRefs[inst.a];
+                        if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
+                        IValue<?> cur = ref.getValue();
                         IValue<?> val = registers[inst.b];
-                        if (cur instanceof NumberValue nv && val instanceof NumberValue rv) {
-                            varRefs[inst.a].setValue(new NumberValue(nv.value + rv.value));
-                        } else if (cur instanceof MutableStringValue ms) {
-                            ms.append(val.stringValue());
-                        } else if (cur instanceof RopeString rs) {
-                            // Rope 转为 MutableString（累加模式 StringBuilder 更优）
-                            MutableStringValue ms = new MutableStringValue(rs.stringValue());
-                            ms.append(val.stringValue());
-                            varRefs[inst.a].setValue(ms);
-                        } else if (cur instanceof StringValue cs && !cs.canBeNumber()) {
-                            MutableStringValue ms = new MutableStringValue(cs.stringValue());
-                            ms.append(val.stringValue());
-                            varRefs[inst.a].setValue(ms);
-                        } else {
-                            varRefs[inst.a].setValue(cur.add(val));
-                        }
+                        IValue<?> nv2 = (cur instanceof NumberValue nv && val instanceof NumberValue rv)
+                                ? new NumberValue(nv.value + rv.value)
+                                : cur.add(val);
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                         break;
                     }
                     case SCOPE_INC: {
@@ -1742,7 +1800,8 @@ public class Interpreter {
         execute(subProg, context);
     }
 
-    private static String getTypeName(IValue<?> value) {
+    /** A4：JIT rtCallMethod 与解释器 CALL_METHOD 共用(STATIC_CALLABLES "typeName.method" 分派)。 */
+    public static String getTypeName(IValue<?> value) {
         if (value instanceof NumberValue) return "number";
         if (value instanceof StringValue) return "string";
         if (value instanceof BooleanValue) return "boolean";
@@ -1768,6 +1827,9 @@ public class Interpreter {
             throw new AriaRuntimeException("Stack overflow: call depth exceeded " + MAX_CALL_DEPTH);
         }
         cd[0] = depth + 1;
+        // Shimmer 对齐(R8)：执行边界作用域配平(与 executeGuarded 同理)。
+        final priv.seventeen.artist.aria.context.ScopeStack inlScopeStack = context.getScopeStack();
+        final int inlBaseDepth = inlScopeStack.depth();
         try {
             // 自递归检测：带 IRProgram 缓存
             // flag: 0=未检测, 1=CALL_STATIC自递归, 3=CALL自递归, -1=确定不是, 2=暂不确定
@@ -1804,6 +1866,29 @@ public class Interpreter {
             } else if (checkCallSelfRecursive(code, constants, keys, selfName) >= 0) {
                 return executeCallRecursiveNumeric(code, constants, regCount, context);
             }
+            // Shimmer 对齐(variables-3/async-2)：进入 inline 前预扫描——函数体含 inline 不支持的
+            // opcode(NEW_ASYNC/AWAIT/CONCAT/GET_PROP/...)时整体走完整解释器,杜绝"执行到一半
+            // default 从 PC0 重放"导致前缀副作用(宿主调用/var 写)执行两次。
+            boolean inlineOk;
+            if (program != null) {
+                byte inf = program.getInlineSupportFlag();
+                if (inf < 0) { inf = isInlineSupported(code) ? (byte) 1 : (byte) 0; program.setInlineSupportFlag(inf); }
+                inlineOk = inf != 0;
+            } else {
+                inlineOk = isInlineSupported(code);
+            }
+            if (!inlineOk) {
+                if (program != null) {
+                    return execute(program, context).getValue();
+                }
+                IRProgram prog = new IRProgram("inline");
+                prog.setInstructions(code);
+                prog.setConstants(constants);
+                prog.setVariableKeys(keys);
+                prog.setSubPrograms(subPrograms);
+                prog.setRegisterCount(regCount);
+                return execute(prog, context).getValue();
+            }
             boolean needVarRefs = true, needScopeRefs = true;
             if (program != null) {
                 byte vf = program.getHasVarOpsFlag();
@@ -1817,6 +1902,7 @@ public class Interpreter {
                     needVarRefs, needScopeRefs);
         } finally {
             cd[0] = depth;
+            while (inlScopeStack.depth() > inlBaseDepth) inlScopeStack.pop();
         }
     }
 
@@ -1833,6 +1919,8 @@ public class Interpreter {
 
         int pc = 0;
         final int len = code.length;
+        // 回跳计数：每 1024 次回跳检查一次线程中断(controlflow-15)
+        int backwardJumps = 0;
 
         while (pc < len) {
             final IRInstruction inst = code[pc];
@@ -1848,11 +1936,9 @@ public class Interpreter {
                         registers[inst.dst] = ref.getValue();
                     }
                     case LOAD_VAL -> {
-                        // 函数体内 `val.x` 点读:此前 executeInlineInternal 无此 case → 恒 none。
-                        // val 存储优先,空则回退 scope→var(脚本 val.x= 实际入 scope)。
+                        // Shimmer 对齐(variables-9)：val.x 只读 val 存储，不再回退 scope/var(与主循环一致)。
                         IValue<?> lv = context.getLocalStorage().getValVariable(keys[inst.a]).getValue();
-                        registers[inst.dst] = (lv == null || lv instanceof NoneValue)
-                                ? resolveValFallback(context, keys[inst.a], lv) : lv;
+                        registers[inst.dst] = lv != null ? lv : NoneValue.NONE;
                     }
                     case STORE_VAR -> {
                         VariableReference ref = varRefs[inst.a];
@@ -1868,25 +1954,10 @@ public class Interpreter {
                         registers[inst.dst] = new ListValue(list);
                     }
                     case LOAD_SCOPE -> {
+                        // Shimmer 对齐(variables-7/controlflow-13)：裸名只查作用域栈，删 var/val 回退。
                         VariableReference ref = scopeRefs != null ? scopeRefs[inst.a] : null;
                         if (ref == null) {
-                            VariableReference scopeRef = context.getScopeStack().getExisting(keys[inst.a]);
-                            if (scopeRef != null) {
-                                ref = scopeRef;
-                            } else {
-                                VariableReference varRef = context.getLocalStorage().getVarVariableExisting(keys[inst.a]);
-                                if (varRef != null) {
-                                    ref = varRef;
-                                } else {
-                                    // val 回退(同主循环):脚本 val.x= 写入 val 存储,裸读也应取到
-                                    ValueReference valRef2 = context.getLocalStorage().getValVariableExisting(keys[inst.a]);
-                                    if (valRef2 != null && valRef2.isAssigned()) {
-                                        registers[inst.dst] = valRef2.getValue();
-                                        pc++; continue;
-                                    }
-                                    ref = context.getScopeStack().get(keys[inst.a]);
-                                }
-                            }
+                            ref = context.getScopeStack().get(keys[inst.a]);
                             if (scopeRefs != null) scopeRefs[inst.a] = ref;
                         }
                         registers[inst.dst] = ref.getValue();
@@ -1900,22 +1971,13 @@ public class Interpreter {
                         ref.setValue(registers[inst.dst]);
                     }
                     case STORE_VAL -> {
-                        ValueReference vref = context.getLocalStorage().getValVariable(keys[inst.a]);
-                        if (vref.isAssigned()) {
-                            throw new AriaRuntimeException("Cannot reassign immutable val '"
-                                    + keys[inst.a].getName() + "' (use var for mutable variables)");
-                        }
-                        vref.setValue(registers[inst.dst]);
+                        // Shimmer 对齐(variables-8)：脚本写 val 静默 no-op(与主循环一致)。
                     }
                     case ADD -> {
+                        // Shimmer 对齐(operators-2/3):删 RopeString 拼接分支,一律 la.add(ra) 产不可变 StringValue。
                         IValue<?> la = registers[inst.a], ra = registers[inst.b];
                         if (la instanceof NumberValue ln && ra instanceof NumberValue rn) {
                             registers[inst.dst] = new NumberValue(ln.value + rn.value);
-                        } else if (la instanceof StringValue ls && ra instanceof StringValue rs
-                                && !ls.canBeNumber() && !rs.canBeNumber()) {
-                            registers[inst.dst] = RopeString.concat(new RopeString(ls.stringValue()), rs.stringValue());
-                        } else if (la instanceof RopeString lrs) {
-                            registers[inst.dst] = RopeString.concat(lrs, ra.stringValue());
                         } else { registers[inst.dst] = la.add(ra); }
                     }
                     case SUB -> {
@@ -1946,15 +2008,36 @@ public class Interpreter {
                     case IN_CHECK -> registers[inst.dst] = evalInCheck(registers[inst.a], registers[inst.b]);
                     case INSTANCEOF_CHECK -> registers[inst.dst] = evalInstanceof(registers[inst.a], registers[inst.b]);
                     case NOT -> registers[inst.dst] = BooleanValue.of(!registers[inst.a].booleanValue());
-                    case JUMP -> { pc = inst.a; continue; }
+                    case JUMP -> {
+                        // Shimmer 对齐(controlflow-15)：回跳周期性检查线程中断(与主循环一致)。
+                        if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                && Thread.currentThread().isInterrupted()) {
+                            throw new AriaRuntimeException("脚本被中断");
+                        }
+                        pc = inst.a; continue;
+                    }
                     case JUMP_IF_FALSE -> {
-                        if (!registers[inst.dst].booleanValue()) { pc = inst.a; continue; }
+                        if (!registers[inst.dst].booleanValue()) {
+                            if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                    && Thread.currentThread().isInterrupted()) {
+                                throw new AriaRuntimeException("脚本被中断");
+                            }
+                            pc = inst.a; continue;
+                        }
                     }
                     case JUMP_IF_TRUE -> {
-                        if (registers[inst.dst].booleanValue()) { pc = inst.a; continue; }
+                        if (registers[inst.dst].booleanValue()) {
+                            if (inst.a <= pc && (++backwardJumps & 0x3FF) == 0
+                                    && Thread.currentThread().isInterrupted()) {
+                                throw new AriaRuntimeException("脚本被中断");
+                            }
+                            pc = inst.a; continue;
+                        }
                     }
                     case JUMP_IF_NONE -> {
-                        if (registers[inst.dst] instanceof NoneValue) { pc = inst.a; continue; }
+                        // inst.c==1：for-in 终结只认 ITER_END 哨兵(controlflow-09，与主循环一致)。
+                        if (inst.c == 1 ? registers[inst.dst] == NoneValue.ITER_END
+                                : registers[inst.dst] instanceof NoneValue) { pc = inst.a; continue; }
                     }
                     case PUSH_SCOPE -> {
                         context.pushScope();
@@ -1990,16 +2073,21 @@ public class Interpreter {
                         } else if (callee instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof ICallable ic) {
                             registers[inst.dst] = ic.invoke(
                                     new InvocationData(context, null, registers, argBase, argCount));
+                        } else if (callee instanceof StoreOnlyValue<?> sov2
+                                && sov2.jvmValue() instanceof CallableWithInvoker cwi) {
+                            // Shimmer 对齐(interop-3/4)：CWI 加括号 → 带参虚调用(与主循环一致)。
+                            registers[inst.dst] = cwi.invoke(context, copyArgs(registers, argBase, argCount));
                         } else {
-                            // Shimmer 对齐：非函数值加括号 → 吞掉括号，返回原值
-                            registers[inst.dst] = callee;
+                            // Shimmer 对齐(R5)：带参 → 抛"不支持的后缀运算:"；空括号 → 吞(与主循环一致)
+                            registers[inst.dst] = callNonCallable(callee, argCount);
                         }
                     }
                     case CALL_STATIC -> {
                         int argCount = inst.b;
                         int argBase = inst.a;
 
-                        ICallable cached2 = (ICallable) inst.cache;
+                        // Shimmer 对齐(jit-11)：cache 可能是 JIT 的 StaticCallCache，instanceof 检查。
+                        ICallable cached2 = inst.cache instanceof ICallable ic2 ? ic2 : null;
                         if (cached2 != null) {
                             // 沙箱激活时 cache 命中也要过命名空间检查（防止预热绕过，见主循环同处注释）
                             SandboxConfig sbHit2 = sandboxConfig.get();
@@ -2034,7 +2122,8 @@ public class Interpreter {
                                 case "math.abs" -> Math.abs(arg);
                                 case "math.floor" -> Math.floor(arg);
                                 case "math.ceil" -> Math.ceil(arg);
-                                case "math.round" -> Math.round(arg);
+                                // A5：math.round 从 inline 表移除——主循环只内联 sin..log 8 个,
+                                // round 须走注册表(尊重宿主覆盖,如 i-Common 的字符串版 round),两循环内联集一致。
                                 case "math.sqrt" -> Math.sqrt(arg);
                                 case "math.log" -> Math.log(arg);
                                 default -> Double.NaN;
@@ -2066,7 +2155,13 @@ public class Interpreter {
                             registers[inst.dst] = callable.invoke(new InvocationData(context, null, callArgs));
                         } else if (fn != null && fn.indexOf('.') >= 0) {
                             int dot = fn.indexOf('.');
-                            IValue<?> obj = resolveVariable(context, fn.substring(0, dot));
+                            String baseName2 = fn.substring(0, dot);
+                            IValue<?> obj = resolveVariable(context, baseName2);
+                            // Shimmer 对齐(builtins-static-6)：命名空间存在但函数不存在 → 抛错(与主循环一致)。
+                            if ((obj == null || obj instanceof NoneValue)
+                                    && CallableManager.INSTANCE.hasStaticNamespace(baseName2)) {
+                                throw new AriaRuntimeException("点运算解析工具集函数不存在: " + fn);
+                            }
                             registers[inst.dst] = dispatchMethodCall(context, obj, fn.substring(dot + 1), callArgs, argCount);
                         } else if ("super".equals(fn)) {
                             IValue<?> selfVal = context.getSelf();
@@ -2089,38 +2184,47 @@ public class Interpreter {
                             if (fnVal instanceof FunctionValue fvCall) {
                                 inst.cache = fvCall.getCallable();
                                 registers[inst.dst] = fvCall.getCallable().invoke(new InvocationData(context, null, callArgs));
+                            } else if (fnVal instanceof StoreOnlyValue<?> sovCall2
+                                    && sovCall2.jvmValue() instanceof CallableWithInvoker cwiCall2) {
+                                // Shimmer 对齐(interop-4)：CWI 虚调用(与主循环一致)。
+                                registers[inst.dst] = cwiCall2.invoke(context, callArgs);
                             } else {
-                                registers[inst.dst] = NoneValue.NONE;
+                                // Shimmer 对齐(builtins-static-1)：裸名全 miss 回查构造器表(与主循环一致)。
+                                ICallable ctorFb = CONSTRUCTORS.get(fn);
+                                if (ctorFb == null && fn != null) {
+                                    ctorFb = CallableManager.INSTANCE.getConstructor(fn);
+                                }
+                                // Shimmer 对齐(R5)：带参 → 抛"不支持的后缀运算:"；空括号 → 吞(与主循环一致)
+                                registers[inst.dst] = ctorFb != null
+                                        ? ctorFb.invoke(new InvocationData(context, null, callArgs))
+                                        : callNonCallable(fnVal, argCount);
                             }
                         }
                     }
                     case CALL_CONSTRUCTOR -> {
+                        // Shimmer 对齐(builtins-object-11(3))：走 constructByName 完整链(脚本类→
+                        // Interpreter.CONSTRUCTORS→CallableManager)——此前只查 CallableManager，
+                        // 函数体内 UUID()/自定义构造器返回 none。
                         int argCount = inst.b;
                         int argBase = inst.a;
                         IValue<?>[] callArgs = new IValue<?>[argCount];
                         for (int i = 0; i < argCount; i++) callArgs[i] = registers[argBase + i];
-                        // 缓存构造器查找
-                        ICallable ctor = (ICallable) inst.cache;
-                        if (ctor == null) {
-                            ctor = CallableManager.INSTANCE.getConstructor(inst.name);
-                            inst.cache = ctor;
-                        }
-                        if (ctor != null) {
-                            registers[inst.dst] = ctor.invoke(new InvocationData(context, null, callArgs));
-                        } else {
-                            registers[inst.dst] = NoneValue.NONE;
-                        }
+                        registers[inst.dst] = constructByName(inst.name, callArgs, context);
                     }
                     case GET_INDEX -> {
+                        // 与主循环一致：c=1 for-in(终结=ITER_END 哨兵)、c=2 args 索引(越界→none)、
+                        // c=0 普通(list 越界抛)；map/list 读出值过 resolveLazyProperty(interop-3)。
                         IValue<?> obj = registers[inst.a];
                         IValue<?> idx = registers[inst.b];
                         if (obj instanceof ListValue lv) {
                             int index = (int) idx.numberValue();
                             List<IValue<?>> list = lv.jvmValue();
                             if (index >= 0 && index < list.size()) {
-                                registers[inst.dst] = list.get(index);
+                                registers[inst.dst] = resolveLazyProperty(list.get(index), context);
                             } else if (inst.c == 1) {
-                                registers[inst.dst] = NoneValue.NONE; // for-in 迭代哨兵
+                                registers[inst.dst] = NoneValue.ITER_END;
+                            } else if (inst.c == 2) {
+                                registers[inst.dst] = NoneValue.NONE;
                             } else {
                                 throw new AriaRuntimeException("列表索引越界: " + index + " (size=" + list.size() + ")");
                             }
@@ -2132,24 +2236,32 @@ public class Interpreter {
                                 if (val == null) {
                                     val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                                 }
-                                registers[inst.dst] = val != null ? val : NoneValue.NONE;
+                                registers[inst.dst] = resolveLazyProperty(val, context);
                             }
                         } else if (obj instanceof SmallMapValue sm) {
-                            registers[inst.dst] = sm.get(idx);
+                            if (inst.c == 1) {
+                                registers[inst.dst] = mapEntryAt(sm.jvmValue(), (int) idx.numberValue());
+                            } else {
+                                registers[inst.dst] = resolveLazyProperty(sm.get(idx), context);
+                            }
                         } else if (obj instanceof StringValue sv) {
                             int index = (int) idx.numberValue();
                             String s = sv.stringValue();
                             registers[inst.dst] = (index >= 0 && index < s.length())
                                     ? new StringValue(String.valueOf(s.charAt(index)))
-                                    : NoneValue.NONE;
+                                    : (inst.c == 1 ? NoneValue.ITER_END : NoneValue.NONE);
                         } else if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof RangeObject range) {
+                            // Shimmer 对齐(controlflow-01/02):for-in range 双端闭(i <= end)；
+                            // (operators-1)不再原地复用 dst 寄存器。
                             double val = range.getStart() + idx.numberValue() * range.getStep();
-                            if (range.getStep() > 0 ? val < range.getEnd() : val > range.getEnd()) {
-                                if (registers[inst.dst] instanceof NumberValue nv) { nv.value = val; }
-                                else { registers[inst.dst] = new NumberValue(val); }
+                            if (range.getStep() > 0 ? val <= range.getEnd() : val >= range.getEnd()) {
+                                registers[inst.dst] = new NumberValue(val);
                             } else {
-                                registers[inst.dst] = NoneValue.NONE;
+                                registers[inst.dst] = inst.c == 1 ? NoneValue.ITER_END : NoneValue.NONE;
                             }
+                        } else if (inst.c == 1) {
+                            // for-in 不可迭代对象：立即终结(哨兵为身份比较，普通 none 会死循环)
+                            registers[inst.dst] = NoneValue.ITER_END;
                         } else if (obj instanceof ObjectValue<?> ov) {
                             // IAriaObject 元素访问 obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
                             Variable elem = ov.jvmValue().getElement(idx.stringValue());
@@ -2158,8 +2270,11 @@ public class Interpreter {
                             registers[inst.dst] = NoneValue.NONE;
                         }
                     }
-                    case INC -> registers[inst.dst] = new NumberValue(registers[inst.a].numberValue() + 1);
+                    // Shimmer 对齐(operators-8)：INC 走加法值模型("a"++ → "a1.0")。
+                    case INC -> registers[inst.dst] = registers[inst.a].add(NumberValue.of(1));
                     case MOVE -> registers[inst.dst] = registers[inst.a];
+                    // Shimmer 对齐(R2 系)：与主循环一致的赋值 RHS 自动调用
+                    case AUTO_INVOKE -> registers[inst.dst] = autoInvokeIfCallable(registers[inst.dst], context);
                     case NEW_FUNCTION -> {
                         final IRProgram subProg = subPrograms[inst.a];
                         final Context capturedCtx = context.snapshotForClosure();
@@ -2198,7 +2313,18 @@ public class Interpreter {
                                         } catch (Throwable ignored) {}
                                     }
                                     if (subProg.isCompiled()) {
-                                        return subProg.getCompiledCode().invoke(data);
+                                        // 与主循环 NEW_FUNCTION 一致：非纯数值 JIT 路径必须基于 capturedCtx
+                                        // (闭包快照)构造调用上下文——直接 invoke(data) 会用调用方 context，
+                                        // 闭包捕获的 scope 变量在生成码 rtLoadScope 中解析不到(得 none→CCE)。
+                                        if (subProg.isJitContextFree()) {
+                                            return subProg.getCompiledCode().invoke(data);
+                                        }
+                                        Context jitCC = lightCtx
+                                                ? capturedCtx.createLightCallContext(
+                                                data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE, data.getArgs())
+                                                : capturedCtx.createCallContext(
+                                                data.getTarget() instanceof IValue<?> t ? t : NoneValue.NONE, data.getArgs());
+                                        return subProg.getCompiledCode().invoke(new InvocationData(jitCC, null, data));
                                     }
                                     Context cc = lightCtx
                                             ? capturedCtx.createLightCallContext(
@@ -2218,50 +2344,44 @@ public class Interpreter {
                         VariableReference ref = varRefs[inst.a];
                         if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
                         IValue<?> cur = ref.getValue();
-                        if (cur instanceof NumberValue nv) ref.setValue(new NumberValue(nv.value + 1));
+                        // Shimmer 对齐(variables-2)：非数字走通用加法值模型(none+1=1、"5"+1=6.0)。
+                        // Shimmer 对齐(R1)：结果写 dst(赋值语句值=新值,与主循环一致)。
+                        IValue<?> nv2 = (cur instanceof NumberValue nv)
+                                ? new NumberValue(nv.value + 1)
+                                : cur.add(new NumberValue(1));
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                     }
                     case VAR_ADD_CONST -> {
                         VariableReference ref = varRefs[inst.a];
                         if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
                         IValue<?> cur = ref.getValue();
                         IValue<?> c = constants[inst.b];
-                        if (cur instanceof NumberValue nv && c instanceof NumberValue cv) {
-                            ref.setValue(new NumberValue(nv.value + cv.value));
-                        } else {
-                            ref.setValue(cur.add(c));
-                        }
+                        IValue<?> nv2 = (cur instanceof NumberValue nv && c instanceof NumberValue cv)
+                                ? new NumberValue(nv.value + cv.value)
+                                : cur.add(c);
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                     }
                     case VAR_ADD_REG -> {
+                        // Shimmer 对齐(operators-2/3):删字符串累加器分支,一律 cur.add(val) 产不可变值。
                         VariableReference ref = varRefs[inst.a];
                         if (ref == null) { ref = context.getLocalStorage().getVarVariable(keys[inst.a]); varRefs[inst.a] = ref; }
                         IValue<?> cur = ref.getValue();
                         IValue<?> val = registers[inst.b];
-                        if (cur instanceof NumberValue nv && val instanceof NumberValue rv) {
-                            ref.setValue(new NumberValue(nv.value + rv.value));
-                        } else if (cur instanceof MutableStringValue ms) {
-                            ms.append(val.stringValue());
-                        } else if (cur instanceof RopeString rs) {
-                            MutableStringValue ms = new MutableStringValue(rs.stringValue());
-                            ms.append(val.stringValue());
-                            ref.setValue(ms);
-                        } else if (cur instanceof StringValue cs && !cs.canBeNumber()) {
-                            MutableStringValue ms = new MutableStringValue(cs.stringValue());
-                            ms.append(val.stringValue());
-                            ref.setValue(ms);
-                        } else {
-                            ref.setValue(cur.add(val));
-                        }
+                        IValue<?> nv2 = (cur instanceof NumberValue nv && val instanceof NumberValue rv)
+                                ? new NumberValue(nv.value + rv.value)
+                                : cur.add(val);
+                        ref.setValue(nv2);
+                        if (inst.dst >= 0) registers[inst.dst] = nv2;
                     }
                     case NOP -> {}
                     default -> {
-                        // 回退到完整 execute
-                        IRProgram prog = new IRProgram("inline");
-                        prog.setInstructions(code);
-                        prog.setConstants(constants);
-                        prog.setVariableKeys(keys);
-                        prog.setSubPrograms(subPrograms);
-                        prog.setRegisterCount(regCount);
-                        return execute(prog, context).getValue();
+                        // Shimmer 对齐(variables-3/async-2)：禁止执行到一半再"从 PC0 重放"——
+                        // 含不支持指令的函数体已在 executeInline 预扫描时整体转交完整解释器，
+                        // 运行中不应到达此处；到达即为内部错误(绝不重放前缀副作用)。
+                        throw new AriaRuntimeException(
+                                "Internal error: unsupported opcode in inline interpreter: " + inst.opcode);
                     }
                 }
                 pc++;
@@ -2272,46 +2392,92 @@ public class Interpreter {
             }
         }
         return NoneValue.NONE;
-    }            private static ICallable tryCreateFastLambda(IRProgram sub) {
+    }
+
+    private static ICallable tryCreateFastLambda(IRProgram sub) {
         if (sub == null) return null;
         IRInstruction[] c = sub.getInstructions();
-        // 分析 lambda 的 IR 模式
-        // 寻找：LOAD_ARG(0) + LOAD_ARG(1) + ADD/SUB/MUL/DIV + RETURN
+        // A4(jit-13)：严格匹配「LOAD_ARG 0 → rA, LOAD_ARG 1 → rB, 单个二元算术(a==rA, b==rB), RETURN 该结果」。
+        // FastBinaryLambda 恒按 args[0] op args[1] 计算——操作数顺序/来源不精确匹配(如 args[1]-args[0])
+        // 一律不建 fast lambda，走 executeInline 精确求值(否则符号颠倒)。
         int loadArgCount = 0;
-        int maxArgIndex = -1;
+        int arg0Reg = -1, arg1Reg = -1;
         IROpCode arithOp = null;
+        int arithA = -1, arithB = -1, arithDst = -1;
+        int returnReg = Integer.MIN_VALUE;
         for (IRInstruction inst : c) {
             switch (inst.opcode) {
-                case PUSH_SCOPE, POP_SCOPE, NOP, MOVE -> {}
-                case LOAD_ARG -> { loadArgCount++; maxArgIndex = Math.max(maxArgIndex, inst.a); }
-                case LOAD_CONST -> {}
-                case ADD, SUB, MUL, DIV -> { if (arithOp == null) arithOp = inst.opcode; else return null; }
-                case RETURN -> {}
+                case PUSH_SCOPE, POP_SCOPE, NOP -> {}
+                case MOVE -> { return null; } // 出现寄存器搬运即形状不标准，保守放弃
+                case LOAD_ARG -> {
+                    loadArgCount++;
+                    if (inst.a == 0) arg0Reg = inst.dst;
+                    else if (inst.a == 1) arg1Reg = inst.dst;
+                    else return null;
+                }
+                case LOAD_CONST -> { return null; } // 二元 lambda 不应含常量
+                case ADD, SUB, MUL, DIV, MOD -> {
+                    if (arithOp != null) return null;
+                    arithOp = inst.opcode; arithA = inst.a; arithB = inst.b; arithDst = inst.dst;
+                }
+                case RETURN -> returnReg = inst.dst;
                 default -> { return null; } // 不支持的指令
             }
         }
-        if (arithOp == null) return null;
-        // 只有 args[0] op args[1] 模式才用 FastBinaryLambda（两个不同参数）
-        if (loadArgCount == 2 && maxArgIndex == 1) {
-            return new FastBinaryLambda(arithOp);
-        }
-        return null; // 其他模式不优化，走 executeInline
+        if (arithOp == null || loadArgCount != 2 || arg0Reg < 0 || arg1Reg < 0) return null;
+        // 操作数顺序必须精确对应 args[0] op args[1]，且 RETURN 返回该算术结果
+        if (arithA != arg0Reg || arithB != arg1Reg || returnReg != arithDst) return null;
+        return new FastBinaryLambda(arithOp);
     }
 
     /**
-     * `~~` 模糊匹配:右值是 Range 则做区间包含(RangeObject.contains,半开 [start,end));
-     * 否则退化为相等性检查(等价 ==),与文档一致。此前实现只认 ListValue 且无 == 回退,故恒 false。
+     * `~~` 区间匹配。Shimmer 对齐(syntax-03/operators-6, Relational.IN_RANGE)：右值是 RangeObject →
+     * 双端闭 [start,end] 包含判定(RangeObject.contains)；右值是其它任何类型(list/数字/字符串) → 恒 false。
+     * (删除了旧的 List 区间与 eq 相等回退——Shimmer 无此语义。)
      */
     private static IValue<?> evalInRange(IValue<?> target, IValue<?> range) {
         if (range instanceof ObjectValue<?> ov && ov.jvmValue() instanceof RangeObject ro) {
             return BooleanValue.of(ro.contains(target.numberValue()));
         }
-        if (range instanceof ListValue lv && lv.jvmValue().size() >= 2) {
-            double val = target.numberValue();
-            return BooleanValue.of(val >= lv.jvmValue().get(0).numberValue()
-                    && val <= lv.jvmValue().get(1).numberValue());
+        return BooleanValue.FALSE;
+    }
+
+    /**
+     * NEG 一元负号。Shimmer 对齐(operators-8, Unary.java NEGATIVE)：
+     * 数字 → 取负；字符串 → nc()(不可数抛"字符串内容非数字…")；canMath(none/boolean) → -doubleValue；
+     * 其余(list/map/StoreOnly, canMath=false) → 抛"不支持的反转操作"。
+     */
+    public static IValue<?> negate(IValue<?> v) throws AriaRuntimeException {
+        if (v instanceof NumberValue nv) return nv.nc();
+        if (v instanceof StringValue sv) return sv.nc();
+        if (v.canMath()) return new NumberValue(-v.numberValue());
+        throw new AriaRuntimeException("不支持的反转操作");
+    }
+
+    /**
+     * executeInlineInternal 支持的 opcode 集合——必须与其 switch 的 case 完全一致。
+     * 用于进入 inline 前的整体预判(variables-3/async-2)：含任一不支持指令则整个函数体
+     * 走完整解释器，杜绝"执行到一半 default 从 PC0 重放"的副作用双跑。
+     */
+    private static boolean isInlineSupported(IRInstruction[] code) {
+        for (IRInstruction inst : code) {
+            switch (inst.opcode) {
+                case LOAD_CONST, LOAD_NONE, LOAD_TRUE, LOAD_FALSE,
+                     LOAD_VAR, LOAD_VAL, STORE_VAR, STORE_VAL,
+                     LOAD_SELF, LOAD_ARG, LOAD_ARGS,
+                     LOAD_SCOPE, STORE_SCOPE,
+                     ADD, SUB, MUL, DIV,
+                     LE, LT, GT, GE, EQ, NE,
+                     IN_RANGE, IN_CHECK, INSTANCEOF_CHECK, NOT,
+                     JUMP, JUMP_IF_FALSE, JUMP_IF_TRUE, JUMP_IF_NONE,
+                     PUSH_SCOPE, POP_SCOPE, RETURN,
+                     CALL, CALL_STATIC, CALL_CONSTRUCTOR,
+                     GET_INDEX, INC, MOVE, NEW_FUNCTION,
+                     VAR_INC, VAR_ADD_CONST, VAR_ADD_REG, AUTO_INVOKE, NOP -> {}
+                default -> { return false; }
+            }
         }
-        return BooleanValue.of(target.eq(range).booleanValue());
+        return true;
     }
 
     /** `key in obj` 成员检查:Map 含键 / List 索引有效 / 类实例含字段 / 对象含成员。 */
@@ -2364,7 +2530,7 @@ public class Interpreter {
     }
 
     /** obj.name 的成员取值：用于"非函数括号后缀吞掉括号后返回原成员值"(obj.field() == obj.field)。 */
-    private static IValue<?> memberOf(IValue<?> obj, String name) {
+    public static IValue<?> memberOf(IValue<?> obj, String name) {
         if (obj instanceof AriaClassValue cv && cv.jvmValue() != null) {
             var f = cv.jvmValue().getFields().get(name);
             if (f != null) return f.getValue();
@@ -2395,11 +2561,12 @@ public class Interpreter {
     }
 
     /**
-     * for-in 迭代模式下取 Map 的第 i 个 [key, value] 对(插入序),越界返回 none。
-     * 用于 `for (k, v in map)` / `for (e in map)`——GET_INDEX 普通模式按键查找无法遍历 Map。
+     * for-in 迭代模式下取 Map 的第 i 个 [key, value] 对(插入序)。
+     * 越界返回 {@link NoneValue#ITER_END} 哨兵(controlflow-09：与元素为 none 区分,
+     * 解释器 for-in 判终为哨兵身份比较；JIT 生成码 INSTANCEOF NoneValue 同样能识别)。
      */
     public static IValue<?> mapEntryAt(java.util.Map<IValue<?>, IValue<?>> m, int i) {
-        if (i < 0 || i >= m.size()) return NoneValue.NONE;
+        if (i < 0 || i >= m.size()) return NoneValue.ITER_END;
         int j = 0;
         for (java.util.Map.Entry<IValue<?>, IValue<?>> e : m.entrySet()) {
             if (j++ == i) {
@@ -2409,22 +2576,7 @@ public class Interpreter {
                 return new ListValue(pair);
             }
         }
-        return NoneValue.NONE;
-    }
-
-    /** LOAD_VAL 回退解析:val 存储为空时按 scope→var 查找(脚本 `val.x=` 实际入 scope)。 */
-    private static IValue<?> resolveValFallback(Context context, VariableKey key, IValue<?> current) {
-        VariableReference sr = context.getScopeStack().getExisting(key);
-        if (sr != null) {
-            IValue<?> sv = sr.getValue();
-            if (sv != null && !(sv instanceof NoneValue)) return sv;
-        }
-        VariableReference vr = context.getLocalStorage().getVarVariableExisting(key);
-        if (vr != null) {
-            IValue<?> vv = vr.getValue();
-            if (vv != null && !(vv instanceof NoneValue)) return vv;
-        }
-        return current == null ? NoneValue.NONE : current;
+        return NoneValue.ITER_END;
     }
 
     private void tryJITCompile(IRProgram program, Context context) {
@@ -2436,7 +2588,8 @@ public class Interpreter {
         } catch (Throwable ignored) {}
     }
 
-    private static IValue<?> resolveVariable(Context context, String name) {
+    /** A4：JIT rtCallByName/rtCallByNameCachedSlow 与解释器共用(scope→var→val→global 完整链)。 */
+    public static IValue<?> resolveVariable(Context context, String name) {
         VariableKey key = VariableKey.of(name);
         // scope
         VariableReference scopeRef = context.getScopeStack().getExisting(key);
@@ -2464,9 +2617,14 @@ public class Interpreter {
         return NoneValue.NONE;
     }
 
-    private IValue<?> dispatchMethodCall(Context context, IValue<?> obj, String methodName,
-                                         IValue<?>[] callArgs, int argCount) throws AriaException {
-        if (obj == null || obj instanceof NoneValue) return NoneValue.NONE;
+    /** A4(jit-14/15)：JIT rtCallByNameCachedSlow 直接复用本方法,保证 CALL_STATIC obj.method 后备链双端一致。 */
+    public IValue<?> dispatchMethodCall(Context context, IValue<?> obj, String methodName,
+                                        IValue<?>[] callArgs, int argCount) throws AriaException {
+        // Shimmer 对齐(R5 实测 Z01/Z03/Z04)：none 接收者——带参调用抛"不支持的后缀运算:"
+        // (Dot.getNode 返回 NONE 后 Parenthesis 只放行 CWI)；空括号被 Shimmer 解析器丢弃 → none。
+        if (obj == null || obj instanceof NoneValue) {
+            return callNonCallable(NoneValue.NONE, argCount);
+        }
 
         // ClassDefinition — 静态方法调用 ClassName.staticMethod(args)
         if (obj instanceof ObjectValue<?> ov && ov.jvmValue() instanceof ClassDefinition cd) {
@@ -2504,8 +2662,16 @@ public class Interpreter {
                     return execute(methodProg, callCtx).getValue();
                 }
             }
-            // Shimmer 对齐(用户要求)：obj.field() 中 field 非函数 → 吞掉括号，返回 obj.field 成员值
-            return memberOf(obj, methodName);
+            // Shimmer 对齐(R5 实测校正)：obj.field(带参) 中 field 非函数 → 抛；空括号 → 成员值
+            return callNonCallable(memberOf(obj, methodName), argCount);
+        }
+
+        // Shimmer 对齐(interop-12, Dot.getNode 顺序)：注册对象函数优先于 getVariable(与 CALL_METHOD/
+        // JIT rtCallMethod 统一)。receiverClass 对 ObjectValue/StoreOnlyValue 解包真实类(interop-1)。
+        ICallable objFunc = CallableManager.INSTANCE
+                .getObjectFunction(receiverClass(obj), methodName);
+        if (objFunc != null) {
+            return callObjectFunction(objFunc, context, obj, callArgs);
         }
 
         // ObjectValue — Java 对象或 IAriaObject
@@ -2518,29 +2684,63 @@ public class Interpreter {
                 return fv.getCallable().invoke(new InvocationData(callCtx, obj, callArgs));
             }
             if (method instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof CallableWithInvoker cwi) {
-                return cwi.getCallable().invoke(new InvocationData(context, obj, callArgs));
+                // Shimmer 对齐(interop-4)：走虚方法 invoke 保 AttributeCallable 覆写(self 上下文)，
+                // 不再拆 getCallable() 也不用接收者顶替 invoker。
+                return cwi.invoke(context, callArgs);
             }
         }
 
-        // 其他类型 — CallableManager 对象函数
-        ICallable objFunc = CallableManager.INSTANCE
-                .getObjectFunction(receiverClass(obj), methodName);
-        if (objFunc != null) {
-            return callObjectFunction(objFunc, context, obj, callArgs);
-        }
+        // Shimmer 对齐(R5 实测校正)：非函数成员带参加括号 → 抛"不支持的后缀运算:"；
+        // 空括号(Shimmer 解析器丢弃) → 返回成员值(无则 none)。
+        return callNonCallable(memberOf(obj, methodName), argCount);
+    }
 
-        // Shimmer 对齐：非函数成员加括号 → 吞掉括号，返回成员值（无则 none）
-        return memberOf(obj, methodName);
+    /**
+     * Shimmer 对齐(R5, Dot.getNodePostfix Parenthesis 分支 + 空括号解析行为实测)：
+     * 对"解析后仍不可调用"的值套用 Shimmer 调用语义——
+     * <ul>
+     *   <li>带参调用(argCount&gt;0)：Shimmer 的 Parenthesis 后缀只放行 CWI，其余(含 none、数字、
+     *       字符串、list、map、成员值)一律抛 {@code 不支持的后缀运算:}(实测 X01-X08/Z01/Z04/Z05)。</li>
+     *   <li>空括号调用(argCount==0)：Shimmer 解析器直接丢弃空 Parenthesis(不生成后缀节点)，
+     *       值原样保留(实测 Y01 x()→5.0、Y02 undefined()→none、X05 b()→true、X10 s.nosuch()→none)。</li>
+     * </ul>
+     */
+    public static IValue<?> callNonCallable(IValue<?> value, int argCount) throws AriaException {
+        if (argCount > 0) {
+            throw new AriaRuntimeException("不支持的后缀运算:");
+        }
+        return value != null ? value : NoneValue.NONE;
+    }
+
+    /**
+     * Shimmer 对齐(R2 系, Assignment.getResult / Expression.needCall)：值若为可调用
+     * (FunctionValue / StoreOnly&lt;CWI&gt;)则零参调用并返回结果，否则原样返回。
+     * 供 AUTO_INVOKE 指令(解释器两循环)与 JIT rtAutoInvoke 共用。
+     */
+    public static IValue<?> autoInvokeIfCallable(IValue<?> value, Context context) throws AriaException {
+        if (value instanceof FunctionValue fv) {
+            return fv.getCallable().invoke(new InvocationData(context, null, EMPTY_ARGS));
+        }
+        if (value instanceof StoreOnlyValue<?> sov && sov.jvmValue() instanceof CallableWithInvoker cwi) {
+            return cwi.invoke(context, EMPTY_ARGS);
+        }
+        return value != null ? value : NoneValue.NONE;
     }
 
     /**
      * 方法分派用的接收者类：若接收者是 {@link ObjectValue} 包装(IAriaObject 等)，用其【被包装对象的真实类】查找
      * CallableManager 里注册的对象函数（否则 obj.getClass() 恒为 ObjectValue，永远查不到注册在具体类下的方法）。
+     * Shimmer 对齐(interop-1)：{@link StoreOnlyValue} 同样解包 jvmValue().getClass()——对照 Shimmer Dot.getNode
+     * 用 value.jvmValue().getClass() 查注册函数、CachedCallable.findMapping 沿接口/父类 isAssignableFrom 命中
+     * (CallableManager.getObjectFunction 的类层级递归等价)。宿主 ItemStack/MobEffectInstance 等注册函数由此可达。
      * 非包装值(StringValue/ListValue 等 stdlib 值本身即注册类)直接用其类，行为不变。
      */
-    private static Class<?> receiverClass(IValue<?> obj) {
+    public static Class<?> receiverClass(IValue<?> obj) {
         if (obj instanceof ObjectValue<?> ov && ov.jvmValue() != null) {
             return ov.jvmValue().getClass();
+        }
+        if (obj instanceof StoreOnlyValue<?> sov && sov.jvmValue() != null) {
+            return sov.jvmValue().getClass();
         }
         return obj.getClass();
     }
@@ -2568,10 +2768,15 @@ public class Interpreter {
         return callObjectFunction(objFunc, ctx, obj, userArgs);
     }
 
-    private static IValue<?> callObjectFunction(ICallable objFunc, Context ctx, IValue<?> obj, IValue<?>[] callArgs)
+    public static IValue<?> callObjectFunction(ICallable objFunc, Context ctx, IValue<?> obj, IValue<?>[] callArgs)
             throws AriaException {
         if (obj instanceof ObjectValue<?> ov) {
             return objFunc.invoke(new InvocationData(ctx, ov.jvmValue(), callArgs));
+        }
+        // Shimmer 对齐(interop-1)：StoreOnlyValue 宿主对象按 Shimmer 约定——target=原始对象、
+        // args 从 0 起为用户参数(不前插 self)，与注册在原始类/接口下的函数(i-Common ItemStackObject 等)匹配。
+        if (obj instanceof StoreOnlyValue<?> sov && sov.jvmValue() != null) {
+            return objFunc.invoke(new InvocationData(ctx, sov.jvmValue(), callArgs));
         }
         IValue<?>[] objCallArgs = new IValue<?>[callArgs.length + 1];
         objCallArgs[0] = obj;
@@ -2579,8 +2784,9 @@ public class Interpreter {
         return objFunc.invoke(new InvocationData(ctx, obj, objCallArgs));
     }
 
-    private IValue<?> constructScriptClass(ClassDefinition cd, IValue<?>[] callArgs,
-                                           Context context) throws AriaException {
+    /** A4：JIT rtCall 的 ClassDefinition 调用分支复用(与解释器 CALL 一致)。 */
+    public IValue<?> constructScriptClass(ClassDefinition cd, IValue<?>[] callArgs,
+                                          Context context) throws AriaException {
         ClassInstance instance = new ClassInstance(cd);
 
         for (Map.Entry<String, Boolean> entry : cd.collectAllFieldMeta().entrySet()) {
@@ -2611,7 +2817,8 @@ public class Interpreter {
         return instanceVal;
     }
 
-    private IValue<?> constructByName(String className, IValue<?>[] callArgs, Context context) throws AriaException {
+    /** A4：JIT rtCallConstructor 复用(脚本类→JavaClassMirror→Interpreter.CONSTRUCTORS→CallableManager 完整链)。 */
+    public IValue<?> constructByName(String className, IValue<?>[] callArgs, Context context) throws AriaException {
         // 类名按完整链解析(scope→var→val→global),不能只查 scope:
         // val.X = use(..) 现写入 val 存储(以往写 scope),只查 scope 会找不到 → 构造失败。
         IValue<?> classDef = resolveVariable(context, className);
@@ -2670,7 +2877,11 @@ public class Interpreter {
         // 一遍扫描：记录每个 LOAD_VAR 的目标寄存器→key；对每条 CALL 校验其 callee 名 == 本函数名。
         // 任一 CALL 调的不是自己（互递归 var.fb 在 fa 内）→ 返回 -1，避免 executeCallRecursiveNumeric
         // 把跨函数调用当成自递归（同 JIT F1 修复）。
+        // A5(A4 同级收紧,对齐 JITCompiler.isNumericOnly/isFastPlanSafe)：选路从排除表改白名单——
+        // LOAD_TRUE/FALSE/NONE(double 模型 1/0 ≠ 主循环 TRUE/none)、JUMP_IF_NONE、STORE_VAR 等
+        // 一律拒绝，杜绝"热身前后不一致"。
         java.util.Map<Integer, Integer> loadVarRegs = new java.util.HashMap<>();
+        java.util.Set<Integer> calleeRegs = new java.util.HashSet<>();
         int selfKeyIdx = -1;
         boolean hasCall = false;
         for (IRInstruction inst : code) {
@@ -2684,21 +2895,112 @@ public class Interpreter {
                         return -1;
                     }
                     selfKeyIdx = ki;
+                    calleeRegs.add(inst.a);
                 }
-                case CONCAT, LOAD_SCOPE, STORE_SCOPE, GET_INDEX, SET_INDEX,
-                     NEW_LIST, NEW_MAP, CALL_METHOD, CALL_CONSTRUCTOR,
-                     LOAD_SELF, LOAD_ARGS, NEW_FUNCTION, CALL_STATIC,
-                     STORE_VAR -> { return -1; }
-                default -> {}
+                case LOAD_ARG -> {
+                    // 递归帧只保存 2 个参数槽(argRestore)——LOAD_ARG 索引 ≥2 弹栈后读 0,拒绝。
+                    if (inst.a > 1) return -1;
+                }
+                case LOAD_CONST,
+                     ADD, SUB, MUL, DIV, MOD, NEG, INC, DEC,
+                     ADD_NUM, SUB_NUM, MUL_NUM, DIV_NUM, MOD_NUM,
+                     EQ, NE, LT, GT, LE, GE, NOT, AND, OR,
+                     JUMP, JUMP_IF_TRUE, JUMP_IF_FALSE,
+                     RETURN, MOVE, PUSH_SCOPE, POP_SCOPE, NOP -> {}
+                default -> { return -1; }
             }
         }
         if (!hasCall || selfKeyIdx < 0) return -1;
+        // A4 同级(constantsAreNumeric)：常量仅数字——Boolean/None 常量在 double 模型是 1/0。
         for (IValue<?> c : constants) {
-            if (!(c instanceof NumberValue) && !(c instanceof BooleanValue) && !(c instanceof NoneValue)) {
-                return -1;
+            if (!(c instanceof NumberValue)) return -1;
+        }
+        // A4 同级(isFastPlanSafe)：flag 寄存器逃逸 + LOAD_VAR 只许作 callee + callee 寄存器不作数据消费。
+        if (!numericFlagsSafe(code)) return -1;
+        for (IRInstruction inst : code) {
+            if (inst.opcode == IROpCode.LOAD_VAR && !calleeRegs.contains(inst.dst)) return -1;
+        }
+        if (!calleeRegsUnconsumed(code, calleeRegs)) return -1;
+        return selfKeyIdx;
+    }
+
+    /**
+     * A5(A4 同级,镜像 JITCompiler.isFastPlanSafe 的 flag 逃逸检查)：EQ/NE/LT/GT/LE/GE/NOT/AND/OR
+     * 在主循环产 BooleanValue、数值快路径产 0/1——两者仅「>0 真值」观测面一致，故 flag 只许被
+     * NOT/AND/OR(传播)/MOVE(复制)/JUMP_IF_TRUE|FALSE(真值消费)使用；逃逸到 RETURN/算术/调用参数 → 拒绝。
+     */
+    private static boolean numericFlagsSafe(IRInstruction[] code) {
+        int regCount = 1;
+        for (IRInstruction inst : code) {
+            regCount = Math.max(regCount, Math.max(inst.dst, Math.max(inst.a, inst.b)) + 1);
+        }
+        boolean[] flag = new boolean[regCount];
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (IRInstruction inst : code) {
+                switch (inst.opcode) {
+                    case EQ, NE, LT, GT, LE, GE, NOT, AND, OR -> {
+                        if (inst.dst >= 0 && !flag[inst.dst]) { flag[inst.dst] = true; changed = true; }
+                    }
+                    case MOVE -> {
+                        if (inst.a >= 0 && inst.a < regCount && flag[inst.a]
+                                && inst.dst >= 0 && !flag[inst.dst]) { flag[inst.dst] = true; changed = true; }
+                    }
+                    default -> {}
+                }
             }
         }
-        return selfKeyIdx;
+        for (IRInstruction inst : code) {
+            switch (inst.opcode) {
+                case ADD, SUB, MUL, DIV, MOD, ADD_NUM, SUB_NUM, MUL_NUM, DIV_NUM, MOD_NUM,
+                     EQ, NE, LT, GT, LE, GE -> {
+                    if (isFlagReg(flag, inst.a) || isFlagReg(flag, inst.b)) return false;
+                }
+                case NEG, INC, DEC -> { if (isFlagReg(flag, inst.a)) return false; }
+                case RETURN -> { if (inst.dst >= 0 && isFlagReg(flag, inst.dst)) return false; }
+                case CALL -> {
+                    for (int i = 0; i < inst.b; i++) if (isFlagReg(flag, inst.c + i)) return false;
+                }
+                case CALL_STATIC -> {
+                    for (int i = 0; i < inst.b; i++) if (isFlagReg(flag, inst.a + i)) return false;
+                }
+                default -> {}
+            }
+        }
+        return true;
+    }
+
+    private static boolean isFlagReg(boolean[] flag, int reg) {
+        return reg >= 0 && reg < flag.length && flag[reg];
+    }
+
+    /**
+     * A5(A4 同级,镜像 isFastPlanSafe 无 var 槽规则)：callee 寄存器(LOAD_VAR 装入的函数引用,
+     * executeCallRecursiveNumeric 对其跳过不写值)不得被当数据消费(会读到 0/陈旧值)；
+     * CALL 自身消费 callee 合法。
+     */
+    private static boolean calleeRegsUnconsumed(IRInstruction[] code, java.util.Set<Integer> calleeRegs) {
+        for (IRInstruction inst : code) {
+            switch (inst.opcode) {
+                case CALL -> {
+                    // callee 自身消费合法；参数寄存器与 JIT 同宽松度(covered CALL 整条跳过)
+                }
+                case ADD, SUB, MUL, DIV, MOD, ADD_NUM, SUB_NUM, MUL_NUM, DIV_NUM, MOD_NUM,
+                     EQ, NE, LT, GT, LE, GE, AND, OR -> {
+                    if (calleeRegs.contains(inst.a) || calleeRegs.contains(inst.b)) return false;
+                }
+                case NEG, NOT, INC, DEC, MOVE -> { if (calleeRegs.contains(inst.a)) return false; }
+                case RETURN, JUMP_IF_TRUE, JUMP_IF_FALSE -> {
+                    if (inst.dst >= 0 && calleeRegs.contains(inst.dst)) return false;
+                }
+                case CALL_STATIC -> {
+                    for (int i = 0; i < inst.b; i++) if (calleeRegs.contains(inst.a + i)) return false;
+                }
+                default -> {}
+            }
+        }
+        return true;
     }
 
 
@@ -2745,9 +3047,9 @@ public class Interpreter {
                         regs[inst.dst] = 0;
                     }
                 }
-                case LOAD_NONE, LOAD_FALSE -> regs[inst.dst] = 0;
-                case LOAD_TRUE -> regs[inst.dst] = 1;
-                case LOAD_VAR -> {} // 跳过：CALL 时直接当自递归处理
+                // A5：LOAD_TRUE/FALSE/NONE 已被 checkCallSelfRecursive 白名单拒绝(double 模型 1/0
+                // ≠ 主循环 TRUE/none)——不再在此建模,万一到达走 default 回退通用路径。
+                case LOAD_VAR -> {} // 跳过：仅作 CALL callee(选路已保证不被当数据消费)
 
                 case ADD, ADD_NUM -> regs[inst.dst] = regs[inst.a] + regs[inst.b];
                 case SUB, SUB_NUM -> regs[inst.dst] = regs[inst.a] - regs[inst.b];
@@ -2845,34 +3147,44 @@ public class Interpreter {
     }
     private static byte checkNumericSelfRecursive(IRInstruction[] code, IValue<?>[] constants, String selfName) {
         if (selfName == null) return -1; // 无法校验调用目标名 → 保守走通用路径
+        // A5(A4 同级收紧,对齐 JITCompiler.isNumericOnly/isFastPlanSafe)：选路从排除表改白名单——
+        // LOAD_TRUE/FALSE/NONE(double 模型 1/0 ≠ 主循环 TRUE/none)、JUMP_IF_NONE、LOAD_VAR/STORE_VAR、
+        // 非数字常量、flag 寄存器逃逸(比较结果被 RETURN/算术消费) 一律拒绝，杜绝"热身前后不一致"。
         boolean hasSelfCallStatic = false;
         boolean hasPendingCache = false;
         for (IRInstruction inst : code) {
-            if (inst.opcode == IROpCode.CALL_STATIC) {
-                // executeSelfRecursiveNumeric 把每条 CALL_STATIC 都当成对自身的递归调用。
-                // 因此只要存在一条非自身的 CALL_STATIC（互递归裸名 fb / math.* 等），就不能用该快路径。
-                if (!selfName.equals(inst.name)) return -1;
-                if (inst.cache != null) {
-                    hasSelfCallStatic = true;
-                } else {
-                    hasPendingCache = true;
-                }
-            }
             switch (inst.opcode) {
-                case CONCAT, LOAD_SCOPE, STORE_SCOPE, GET_INDEX, SET_INDEX,
-                     NEW_LIST, NEW_MAP, CALL_METHOD, CALL_CONSTRUCTOR,
-                     LOAD_SELF, LOAD_ARGS, NEW_FUNCTION:
-                    return -1; // 确定不是
-                default: break;
+                case CALL_STATIC -> {
+                    // executeSelfRecursiveNumeric 把每条 CALL_STATIC 都当成对自身的递归调用。
+                    // 因此只要存在一条非自身的 CALL_STATIC（互递归裸名 fb / math.* 等），就不能用该快路径。
+                    if (!selfName.equals(inst.name)) return -1;
+                    if (inst.cache != null) {
+                        hasSelfCallStatic = true;
+                    } else {
+                        hasPendingCache = true;
+                    }
+                }
+                case LOAD_ARG -> {
+                    // 递归帧只保存 2 个参数槽(argRestore)——LOAD_ARG 索引 ≥2 弹栈后读 0,拒绝。
+                    if (inst.a > 1) return -1;
+                }
+                case LOAD_CONST,
+                     ADD, SUB, MUL, DIV, MOD, NEG, INC, DEC,
+                     ADD_NUM, SUB_NUM, MUL_NUM, DIV_NUM, MOD_NUM,
+                     EQ, NE, LT, GT, LE, GE, NOT, AND, OR,
+                     JUMP, JUMP_IF_TRUE, JUMP_IF_FALSE,
+                     RETURN, MOVE, PUSH_SCOPE, POP_SCOPE, NOP -> {}
+                default -> { return -1; } // 确定不是
             }
         }
         if (!hasSelfCallStatic && !hasPendingCache) return -1; // 没有任何自身 CALL_STATIC
         if (!hasSelfCallStatic) return 0;
+        // A4 同级(constantsAreNumeric)：常量仅数字——Boolean/None 常量在 double 模型是 1/0。
         for (IValue<?> c : constants) {
-            if (!(c instanceof NumberValue) && !(c instanceof BooleanValue) && !(c instanceof NoneValue)) {
-                return -1;
-            }
+            if (!(c instanceof NumberValue)) return -1;
         }
+        // A4 同级(isFastPlanSafe)：flag 寄存器逃逸检查。
+        if (!numericFlagsSafe(code)) return -1;
         return 1; // 确认是自递归
     }
 
@@ -2924,8 +3236,8 @@ public class Interpreter {
                         regs[inst.dst] = 0;
                     }
                 }
-                case LOAD_NONE, LOAD_FALSE -> regs[inst.dst] = 0;
-                case LOAD_TRUE -> regs[inst.dst] = 1;
+                // A5：LOAD_TRUE/FALSE/NONE 已被 checkNumericSelfRecursive 白名单拒绝(double 模型 1/0
+                // ≠ 主循环 TRUE/none)——不再在此建模,万一到达走 default 回退通用路径。
 
                 case ADD, ADD_NUM -> regs[inst.dst] = regs[inst.a] + regs[inst.b];
                 case SUB, SUB_NUM -> regs[inst.dst] = regs[inst.a] - regs[inst.b];
@@ -2949,6 +3261,7 @@ public class Interpreter {
                 case LE -> regs[inst.dst] = regs[inst.a] <= regs[inst.b] ? 1 : 0;
                 case GE -> regs[inst.dst] = regs[inst.a] >= regs[inst.b] ? 1 : 0;
                 // Shimmer 对齐：数值真值 = value > 0（负数/0/NaN 均假），修复热路径把负数当 true 的 bug。
+                // (flag 结果仅被真值消费——numericFlagsSafe 已保证,与主循环观测一致。)
                 case NOT -> regs[inst.dst] = regs[inst.a] <= 0 ? 1 : 0;
                 case AND -> regs[inst.dst] = (regs[inst.a] > 0 && regs[inst.b] > 0) ? 1 : 0;
                 case OR -> regs[inst.dst] = (regs[inst.a] > 0 || regs[inst.b] > 0) ? 1 : 0;

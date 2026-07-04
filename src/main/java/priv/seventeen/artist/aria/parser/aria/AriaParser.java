@@ -40,14 +40,55 @@ public class AriaParser {
     private final List<CompileException> errors = new ArrayList<>();
     // 解析 for 头部循环变量表达式时为 true,抑制 `in` 作成员运算符(让 for-in 的 in 被正确识别)。
     private boolean noInOperator = false;
+    // Shimmer 对齐(syntax-08)：lenient 模式——语句解析出错时丢弃出错语句及其后全部内容,
+    // 保留已解析前缀构成程序(Shimmer compilationUnit 静默截断语义)。默认 false(fail-fast)。
+    private final boolean lenient;
+
+    /**
+     * Shimmer 对齐(syntax-04)：行首运算符续行折叠集合(实测,仅这些)：
+     * {@code .  ?  :  &&  ||  ,  <  ==}。
+     * 注意 {@code + - * / = [ { > >= <= !=} 等不折叠(Shimmer 实测保持语句结束)。
+     * Shimmer 对齐(R6, A9-P2 探针 N01-N12 实测校正)：{@code (} 从折叠集移除——Shimmer 的
+     * {@code \n(} 在任何"表达式已完整"的位置都不折叠成调用后缀(return (x)\n(3)→5.0、
+     * x=f\n(3) 两语句、(1)\n(2)→2.0)；仅在"等待操作数"的位置(= 号后、括号内、逗号后)可跨行，
+     * 那些位置由 skipNewlines 处理，与折叠集无关。
+     */
+    private static final java.util.Set<TokenType> NEWLINE_FOLD_SET = java.util.EnumSet.of(
+            TokenType.DOT, TokenType.QUESTION, TokenType.COLON, TokenType.AND, TokenType.OR,
+            TokenType.COMMA, TokenType.LT, TokenType.EQ);
 
     public AriaParser(Lexer lexer) throws CompileException {
+        this(lexer, false);
+    }
+
+    public AriaParser(Lexer lexer, boolean lenient) throws CompileException {
         this.lexer = lexer;
+        this.lenient = lenient;
         this.current = lexer.nextToken();
     }
 
     public List<CompileException> getErrors() { return errors; }
     public boolean hasErrors() { return !errors.isEmpty(); }
+
+    /**
+     * Shimmer 对齐(syntax-04)：表达式续接位置遇单个 NEWLINE 且下一 token 属折叠集合时,
+     * 吞掉该 NEWLINE 让表达式跨行继续(如 {@code m\n.size()}、{@code true\n&& false}、
+     * {@code x=f\n(3)}、{@code [1\n,2]}、{@code 1\n< 2}、{@code 1\n== 1}、跨行三元)。
+     * 连续多个 NEWLINE 不折叠(对齐 Shimmer 词法仅折叠紧邻单换行)。
+     */
+    private void foldNewlineContinuation() throws CompileException {
+        if (current.getType() != TokenType.NEWLINE) return;
+        Token next = lexer.peek();
+        if (next != null && NEWLINE_FOLD_SET.contains(next.getType())) {
+            advance(); // 消费单个 NEWLINE,current 变为续接运算符
+        }
+    }
+
+    /** 窥视 current 之后的下一个 token 是否为指定类型。 */
+    private boolean peekIs(TokenType type) throws CompileException {
+        Token next = lexer.peek();
+        return next != null && next.getType() == type;
+    }
 
 
     private boolean check(TokenType type) {
@@ -143,10 +184,12 @@ public class AriaParser {
     private List<ASTNode> parseExprList() throws CompileException {
         List<ASTNode> list = new ArrayList<>();
         list.add(parseExprOrSpread());
+        foldNewlineContinuation(); // syntax-04：行首 , 续行([1\n,2])
         while (check(TokenType.COMMA)) {
             advance();
             skipNewlines();
             list.add(parseExprOrSpread());
+            foldNewlineContinuation(); // syntax-04
         }
         return list;
     }
@@ -169,8 +212,8 @@ public class AriaParser {
         List<ASTNode> statements = new ArrayList<>();
         skipNewlines();
 
-        // 解析 import 语句
-        while (check(TokenType.IMPORT)) {
+        // 解析 import 语句（syntax-07：import 后随非构造 token 时降级为普通标识符，交语句循环处理）
+        while (check(TokenType.IMPORT) && (peekIs(TokenType.IDENTIFIER) || peekIs(TokenType.LBRACE))) {
             statements.add(parseImportStmt());
             skipNewlines();
         }
@@ -184,6 +227,9 @@ public class AriaParser {
                 statements.add(parseStatement());
             } catch (CompileException e) {
                 errors.add(e);
+                // Shimmer 对齐(syntax-08)：lenient 模式丢弃出错语句及其后全部内容，
+                // 保留已解析前缀构成程序（静默截断）。
+                if (lenient) break;
                 synchronize();
                 // 防止无限循环：如果 synchronize 后 token 没变，强制前进
                 if (current == before) {
@@ -195,7 +241,7 @@ public class AriaParser {
             skipNewlines();
         }
 
-        if (errors.size() > 0 && statements.isEmpty()) {
+        if (!lenient && errors.size() > 0 && statements.isEmpty()) {
             throw errors.get(0);
         }
 
@@ -212,18 +258,26 @@ public class AriaParser {
 
     private ASTNode parseStatement() throws CompileException {
         skipNewlines();
+        // Shimmer 对齐(syntax-07)：match/class/try/import/export 是 Aria 新增保留字，
+        // Shimmer 里是合法标识符。语句开头按各自构造首 token lookahead 判别——
+        // 不成立时降级为普通标识符走表达式语句(如 match = 5、class++、try.x)。
         return switch (current.getType()) {
             case IF -> parseIfStmt();
             case FOR -> parseForStmt();
             case WHILE -> parseWhileStmt();
             case SWITCH -> parseSwitchStmt();
-            case MATCH -> parseMatchStmt();
+            case MATCH -> peekIs(TokenType.LPAREN)
+                    ? parseMatchStmt() : parseExprStmtOrDestructure();
             case ASYNC -> parseAsyncStmt();
             case LBRACE -> parseBlockStmt();
-            case CLASS -> parseClassDecl(Collections.emptyList());
-            case TRY -> parseTryCatchStmt();
-            case IMPORT -> parseImportStmt();
-            case EXPORT -> parseExportStmt();
+            case CLASS -> peekIs(TokenType.IDENTIFIER)
+                    ? parseClassDecl(Collections.emptyList()) : parseExprStmtOrDestructure();
+            case TRY -> (peekIs(TokenType.LBRACE) || peekIs(TokenType.NEWLINE))
+                    ? parseTryCatchStmt() : parseExprStmtOrDestructure();
+            case IMPORT -> (peekIs(TokenType.IDENTIFIER) || peekIs(TokenType.LBRACE))
+                    ? parseImportStmt() : parseExprStmtOrDestructure();
+            case EXPORT -> (peekIs(TokenType.IDENTIFIER) || peekIs(TokenType.CLASS))
+                    ? parseExportStmt() : parseExprStmtOrDestructure();
             case AT -> {
                 // 注解可能修饰 class
                 List<AnnotationExpr> annotations = parseAnnotations();
@@ -251,6 +305,9 @@ public class AriaParser {
             if ("var".equals(prefix) || "val".equals(prefix)) {
                 Token peeked = lexer.peek();
                 if (peeked.getType() == TokenType.DOT) {
+                    // Shimmer 对齐(R4)：记录语句起点——若特化分支解析后语句未在此终结
+                    // (后随普通二元运算符,如 `var.l - "1"`),回退按完整表达式语句重解。
+                    int[] stmtMark = lexer.mark();
                     // 消费 var/val
                     advance();
                     // 消费 .
@@ -270,6 +327,7 @@ public class AriaParser {
                     ASTNode left = new DotExpr(loc(start), new IdentifierExpr(loc(start), prefix), prop.getValue());
                     left = parsePostfixOps(left);
                     // 继续解析可能的 . 链
+                    foldNewlineContinuation(); // syntax-04：var.a\n.size() 续行
                     while (check(TokenType.DOT) || check(TokenType.OPTIONAL_CHAIN)) {
                         boolean optional = check(TokenType.OPTIONAL_CHAIN);
                         advance();
@@ -285,6 +343,16 @@ public class AriaParser {
                             left = new DotExpr(left.getLocation(), left, p2.getValue());
                         }
                         left = parsePostfixOps(left);
+                        foldNewlineContinuation(); // syntax-04
+                    }
+                    // Shimmer 对齐(variables-13)：语句级 var.x++ / var.x--(此前仅裸名可用)
+                    if (check(TokenType.INCREMENT) || check(TokenType.DECREMENT)) {
+                        boolean inc = check(TokenType.INCREMENT);
+                        advance();
+                        ASTNode unary = new UnaryExpr(left.getLocation(), left,
+                                inc ? UnaryExpr.UnaryOp.INCREMENT : UnaryExpr.UnaryOp.DECREMENT, false);
+                        consumeStmtEnd();
+                        return new ExpressionStmt(loc(start), unary);
                     }
                     // 检查赋值
                     AssignmentExpr.AssignOp op = matchAssignOp();
@@ -294,6 +362,18 @@ public class AriaParser {
                         ASTNode assign = new AssignmentExpr(left.getLocation(), left, op, right);
                         consumeStmtEnd();
                         return new ExpressionStmt(loc(start), assign);
+                    }
+                    // Shimmer 对齐(R4)：非赋值/自增形态且语句未终结(后随二元运算符等)——
+                    // 此前在 var.x 处直接断句,`var.l - "1"` 被拆成两条语句(- "1" 变一元负)。
+                    // Shimmer 把整行按完整二元表达式语句求值(对 list 有删除副作用)。
+                    // 回退到语句起点,走通用表达式解析。
+                    if (!check(TokenType.NEWLINE) && !check(TokenType.SEMICOLON)
+                            && !check(TokenType.EOF) && !check(TokenType.RBRACE)) {
+                        lexer.reset(stmtMark);
+                        current = start;
+                        ASTNode full = parseExpression();
+                        consumeStmtEnd();
+                        return new ExpressionStmt(loc(start), full);
                     }
                     consumeStmtEnd();
                     return new ExpressionStmt(loc(start), left);
@@ -358,6 +438,7 @@ public class AriaParser {
 
     private ASTNode parseIfStmt() throws CompileException {
         Token start = expect(TokenType.IF);
+        skipNewlines(); // Shimmer 对齐(syntax-10)：关键字与 ( 之间允许换行
         expect(TokenType.LPAREN);
         skipNewlines();
         ASTNode condition = parseExpression();
@@ -373,6 +454,7 @@ public class AriaParser {
         skipNewlines();
         while (check(TokenType.ELIF)) {
             Token elifStart = advance();
+            skipNewlines(); // Shimmer 对齐(syntax-10)
             expect(TokenType.LPAREN);
             skipNewlines();
             ASTNode elifCond = parseExpression();
@@ -401,6 +483,7 @@ public class AriaParser {
 
     private ASTNode parseForStmt() throws CompileException {
         Token start = expect(TokenType.FOR);
+        skipNewlines(); // Shimmer 对齐(syntax-10)
         expect(TokenType.LPAREN);
         skipNewlines();
 
@@ -500,6 +583,7 @@ public class AriaParser {
 
     private ASTNode parseWhileStmt() throws CompileException {
         Token start = expect(TokenType.WHILE);
+        skipNewlines(); // Shimmer 对齐(syntax-10)
         expect(TokenType.LPAREN);
         skipNewlines();
         ASTNode condition = parseExpression();
@@ -514,6 +598,7 @@ public class AriaParser {
 
     private ASTNode parseSwitchStmt() throws CompileException {
         Token start = expect(TokenType.SWITCH);
+        skipNewlines(); // Shimmer 对齐(syntax-10)
         expect(TokenType.LPAREN);
         skipNewlines();
         ASTNode condition = parseExpression();
@@ -622,7 +707,9 @@ public class AriaParser {
 
         String catchVar = null;
         ASTNode catchBlock = null;
-        if (check(TokenType.CATCH)) {
+        // syntax-07：catch 作变量名时(后随非 (/{ 的 token,如 catch = 5)不当作 catch 子句
+        if (check(TokenType.CATCH)
+                && (peekIs(TokenType.LPAREN) || peekIs(TokenType.LBRACE) || peekIs(TokenType.NEWLINE))) {
             advance();
             // catch 可以带变量名: catch(e) { ... } 或不带: catch { ... }
             if (check(TokenType.LPAREN)) {
@@ -639,7 +726,9 @@ public class AriaParser {
         }
 
         ASTNode finallyBlock = null;
-        if (check(TokenType.FINALLY)) {
+        // syntax-07：finally 作变量名时(后随非 { 的 token)不当作 finally 子句
+        if (check(TokenType.FINALLY)
+                && (peekIs(TokenType.LBRACE) || peekIs(TokenType.NEWLINE))) {
             advance();
             skipNewlines();
             expect(TokenType.LBRACE);
@@ -777,7 +866,9 @@ public class AriaParser {
             return new ReturnStmt(loc(start), null, ExpressionStmt.StmtControl.NEXT);
         }
 
-        if (check(TokenType.THROW)) {
+        // syntax-07：throw 后随 token 无法开启表达式时(如 throw = 5、f(throw)、裸 throw)，
+        // 降级为普通标识符走操作数路径。
+        if (check(TokenType.THROW) && tokenStartsExpression(lexer.peek())) {
             advance();
             ASTNode value = parseAssignExpr();
             return new ReturnStmt(loc(start), value, ExpressionStmt.StmtControl.THROW);
@@ -791,6 +882,22 @@ public class AriaParser {
                 || current.getType() == TokenType.SEMICOLON
                 || current.getType() == TokenType.EOF
                 || current.getType() == TokenType.RBRACE;
+    }
+
+    /**
+     * syntax-07 辅助：token 能否开启一个表达式(操作数)。用于 throw/await 等
+     * "关键字+表达式"构造的上下文判别——后随 token 不能开启表达式时关键字降级为标识符。
+     */
+    private boolean tokenStartsExpression(Token token) {
+        if (token == null) return false;
+        return switch (token.getType()) {
+            case IDENTIFIER, NUMBER, TEXT, TEXTPLUS, TEXT_BLOCK, TRUE, FALSE, NONE,
+                 LPAREN, LBRACKET, LBRACE, MINUS, NOT, BIT_NOT, INCREMENT, DECREMENT,
+                 AT, SUPER, ARROW, ASYNC, AWAIT, SPREAD,
+                 MATCH, FROM, AS, CLASS, INSTANCEOF, TRY, THROW, IMPORT, EXPORT,
+                 EXTENDS, CATCH, FINALLY -> true;
+            default -> false;
+        };
     }
 
 
@@ -841,6 +948,7 @@ public class AriaParser {
     private ASTNode parseTernaryExpr() throws CompileException {
         ASTNode condition = parseOrExpr();
 
+        foldNewlineContinuation(); // syntax-04：行首 ? 续行(跨行三元)
         if (check(TokenType.QUESTION)) {
             advance();
             skipNewlines();
@@ -880,11 +988,13 @@ public class AriaParser {
 
     private ASTNode parseOrExpr() throws CompileException {
         ASTNode left = parseAndExpr();
+        foldNewlineContinuation(); // syntax-04：行首 || 续行
         while (check(TokenType.OR)) {
             advance();
             skipNewlines();
             ASTNode right = parseAndExpr();
             left = new BinaryExpr(left.getLocation(), left, BinaryExpr.BinaryOp.OR, right);
+            foldNewlineContinuation(); // syntax-04
         }
         return left;
     }
@@ -892,11 +1002,13 @@ public class AriaParser {
 
     private ASTNode parseAndExpr() throws CompileException {
         ASTNode left = parseNullishExpr();
+        foldNewlineContinuation(); // syntax-04：行首 && 续行
         while (check(TokenType.AND)) {
             advance();
             skipNewlines();
             ASTNode right = parseNullishExpr();
             left = new BinaryExpr(left.getLocation(), left, BinaryExpr.BinaryOp.AND, right);
+            foldNewlineContinuation(); // syntax-04
         }
         return left;
     }
@@ -949,6 +1061,7 @@ public class AriaParser {
     private ASTNode parseRelExpr() throws CompileException {
         ASTNode left = parseRangeExpr();
 
+        foldNewlineContinuation(); // syntax-04：行首 < 与 == 续行(> >= <= != 不折叠)
         BinaryExpr.BinaryOp op = switch (current.getType()) {
             case EQ -> BinaryExpr.BinaryOp.EQ;
             case NE -> BinaryExpr.BinaryOp.NE;
@@ -1042,8 +1155,9 @@ public class AriaParser {
     private ASTNode parseUnaryExpr() throws CompileException {
         Token start = current;
 
-        // await expr
-        if (check(TokenType.AWAIT)) {
+        // await expr —— syntax-07：后随 token 无法开启表达式时(如 await = 5、f(await))
+        // 降级为普通标识符走操作数路径(parseElement 接受 AWAIT)。
+        if (check(TokenType.AWAIT) && tokenStartsExpression(lexer.peek())) {
             advance();
             ASTNode operand = parseUnaryExpr();
             return new priv.seventeen.artist.aria.ast.expression.AwaitExpr(loc(start), operand);
@@ -1111,6 +1225,7 @@ public class AriaParser {
     private ASTNode parseDotExpr() throws CompileException {
         ASTNode left = parseElemPostfix();
 
+        foldNewlineContinuation(); // syntax-04：行首 . 续行(m\n.size())
         while (check(TokenType.DOT) || check(TokenType.OPTIONAL_CHAIN)) {
             boolean optional = check(TokenType.OPTIONAL_CHAIN);
             advance();
@@ -1135,6 +1250,7 @@ public class AriaParser {
                 left = new DotExpr(left.getLocation(), left, prop.getValue());
                 left = parsePostfixOps(left);
             }
+            foldNewlineContinuation(); // syntax-04
         }
 
         return left;
@@ -1148,6 +1264,7 @@ public class AriaParser {
 
     private ASTNode parsePostfixOps(ASTNode element) throws CompileException {
         while (true) {
+            foldNewlineContinuation(); // syntax-04：行首 . 等续行；( 与 [ 均不折叠(R6 实测)
             if (check(TokenType.LBRACKET)) {
                 advance();
                 skipNewlines();
@@ -1278,17 +1395,37 @@ public class AriaParser {
             return new IdentifierExpr(loc(start), "super");
         }
 
+        // Shimmer 对齐(syntax-07)：Aria 新增的 13 个保留字在 Shimmer 里是合法标识符——
+        // 操作数位置(其构造语法不可能成立处)降级为普通标识符：
+        // match+1、f(from)、[as]、for(as in list)、return match、throw=5 等。
+        // 各构造位置已在 parseStatement/parseExpression/parseUnaryExpr 用 lookahead 先行拦截。
+        if (isContextualKeywordAsIdentifier()) {
+            Token token = advance();
+            return new IdentifierExpr(loc(start), token.getValue());
+        }
+
         throw error("Unexpected token: " + current.getType() + " ('" + current.getValue() + "')");
+    }
+
+    /** syntax-07：可上下文化回退为标识符的保留字(match/from/as/class/await/instanceof/try/throw/import/export/extends/catch/finally)。 */
+    private boolean isContextualKeywordAsIdentifier() {
+        return switch (current.getType()) {
+            case MATCH, FROM, AS, CLASS, AWAIT, INSTANCEOF, TRY, THROW,
+                 IMPORT, EXPORT, EXTENDS, CATCH, FINALLY -> true;
+            default -> false;
+        };
     }
 
     private List<MapExpr.MapEntry> parseKvPairList() throws CompileException {
         List<MapExpr.MapEntry> entries = new ArrayList<>();
         entries.add(parseKvPair());
+        foldNewlineContinuation(); // syntax-04：行首 , 续行
         while (check(TokenType.COMMA)) {
             advance();
             skipNewlines();
             if (check(TokenType.RBRACE)) break; // 允许尾逗号
             entries.add(parseKvPair());
+            foldNewlineContinuation(); // syntax-04
         }
         return entries;
     }
@@ -1303,6 +1440,7 @@ public class AriaParser {
         // 键值对必须显式带冒号 `key: value`（键可为标识符/字符串/数字字面量或表达式）。
         // 注：旧的 `{ name }` 简写已随逗号运算符一并从文档移除，这里不再接受，缺冒号即报错。
         ASTNode key = parseExpression();
+        foldNewlineContinuation(); // syntax-04：行首 : 续行
         expect(TokenType.COLON);
         skipNewlines();
         ASTNode value = parseExpression();
@@ -1343,6 +1481,7 @@ public class AriaParser {
                 depth = 1;
                 i++;
                 StringBuilder exprStr = new StringBuilder();
+                boolean closed = false;
                 while (i < raw.length()) {
                     char ec = raw.charAt(i);
                     if (ec == '{') {
@@ -1352,6 +1491,7 @@ public class AriaParser {
                         depth--;
                         if (depth == 0) {
                             i++;
+                            closed = true;
                             break;
                         }
                         exprStr.append(ec);
@@ -1359,6 +1499,14 @@ public class AriaParser {
                         exprStr.append(ec);
                     }
                     i++;
+                }
+                // Shimmer 对齐(R7c, ASTBaseTypeTextPlusNode.splitBraces)：未闭合 `{`——
+                // 丢弃 `{` 本身，其后内容(含嵌套 `{`)按字面并回("a{b"→"ab"、"a{b{c"→"ab{c"、
+                // "x{z}y{w"→"x<z>yw")，不再当表达式求值后丢弃。
+                if (!closed) {
+                    segment.append(exprStr);
+                    depth = 0;
+                    continue; // i 已到串尾,外层循环随即结束,残余 segment 在下方并入 parts
                 }
                 // 解析插值表达式
                 String exprSource = exprStr.toString().trim();

@@ -88,6 +88,9 @@ public class AriaEngine {
         CallableManager.INSTANCE.aliasNamespace("template", "Template");
 
         IObjectConstructor<?> rangeCtor = data -> {
+            if (data.argCount() < 2) {
+                return new RangeObject(0, 0);
+            }
             double start = data.get(0).numberValue();
             double end = data.get(1).numberValue();
             if (data.argCount() >= 3) {
@@ -104,6 +107,10 @@ public class AriaEngine {
             }
             return new ObjectValue<>(new UUIDObject());
         });
+
+        CallableManager.INSTANCE.registerConstructor("UUID", (IObjectConstructor<UUIDObject>) data ->
+                data.argCount() > 0 ? new UUIDObject(data.get(0).stringValue()) : new UUIDObject());
+        CallableManager.INSTANCE.registerObject(UUIDObject.class);
 
         JavaInterop.register(CallableManager.INSTANCE);
 

@@ -37,10 +37,27 @@ public class ConstantFolding {
         int[] constIndex = new int[program.getRegisterCount()]; // -1 = not const
         java.util.Arrays.fill(constIndex, -1);
 
+
+        java.util.Set<Integer> jumpTargets = new java.util.HashSet<>();
+        for (IRInstruction inst : code) {
+            if (isJumpOp(inst.opcode)) {
+                jumpTargets.add(inst.a);
+            }
+        }
+
         List<IRInstruction> optimized = new ArrayList<>();
         List<IValue<?>> newConstants = new ArrayList<>(java.util.Arrays.asList(constants));
 
-        for (IRInstruction inst : code) {
+        for (int pc = 0; pc < code.length; pc++) {
+            IRInstruction inst = code[pc];
+            if (jumpTargets.contains(pc)) {
+                java.util.Arrays.fill(constIndex, -1);
+            }
+            if (isJumpOp(inst.opcode)) {
+                java.util.Arrays.fill(constIndex, -1);
+                optimized.add(inst);
+                continue;
+            }
             if (inst.opcode == IROpCode.LOAD_CONST) {
                 constIndex[inst.dst] = inst.a;
                 optimized.add(inst);
@@ -93,6 +110,12 @@ public class ConstantFolding {
     private boolean isBinaryArith(IROpCode op) {
         return op == IROpCode.ADD || op == IROpCode.SUB || op == IROpCode.MUL || op == IROpCode.DIV || op == IROpCode.MOD
             || op == IROpCode.ADD_NUM || op == IROpCode.SUB_NUM || op == IROpCode.MUL_NUM || op == IROpCode.DIV_NUM || op == IROpCode.MOD_NUM;
+    }
+
+    private boolean isJumpOp(IROpCode op) {
+        return op == IROpCode.JUMP || op == IROpCode.JUMP_IF_TRUE
+            || op == IROpCode.JUMP_IF_FALSE || op == IROpCode.JUMP_IF_NONE
+            || op == IROpCode.TRY_BEGIN;
     }
 
     private IValue<?> getConst(List<IValue<?>> constants, int index) {

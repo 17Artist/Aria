@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 public final class StoreOnlyValue<T> extends IValue<T> {
 
     private final T value;
@@ -31,6 +33,22 @@ public final class StoreOnlyValue<T> extends IValue<T> {
     @Override public int typeID() { return 5; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
+
+    // Shimmer 对齐(operators-8, StoreOnlyValue):加减一律抛异常。
+    @Override
+    protected IValue<?> addValue(IValue<?> other) throws AriaRuntimeException {
+        throw new AriaRuntimeException("不支持的操作");
+    }
+
+    @Override
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
+        throw new AriaRuntimeException("不支持的操作");
+    }
+
+    @Override
+    public String typeName() {
+        return value != null ? value.getClass().getCanonicalName() : "none";
+    }
 
     @Override
     public String toString() { return stringValue(); }

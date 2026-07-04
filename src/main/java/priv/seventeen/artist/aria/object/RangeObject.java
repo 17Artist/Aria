@@ -21,8 +21,10 @@ public class RangeObject implements IAriaObject {
     private final double end;
     private final double step;
 
+    // Shimmer 对齐(builtins-static-2/9, controlflow-01/02):默认 step 恒为 +1(不再对 start>end 自动 -1),
+    // start>end 时迭代/包含自然为空。显式第 3 参 step 为 Aria 扩展,保留。
     public RangeObject(double start, double end) {
-        this(start, end, start <= end ? 1 : -1);
+        this(start, end, 1);
     }
 
     public RangeObject(double start, double end, double step) {
@@ -35,13 +37,15 @@ public class RangeObject implements IAriaObject {
     public double getEnd() { return end; }
     public double getStep() { return step; }
 
+    // Shimmer 对齐(operators-6):双端闭 [start, end](负 step 的 Aria 扩展同样双端闭)。
     public boolean contains(double value) {
-        if (step > 0) return value >= start && value < end;
-        return value <= start && value > end;
+        if (step > 0) return value >= start && value <= end;
+        return value <= start && value >= end;
     }
 
-    @Override public String getTypeName() { return "Range"; }
-    @Override public double numberValue() { return end - start; }
-    @Override public String stringValue() { return "Range(" + start + ", " + end + ")"; }
+    // Shimmer 对齐(interop-11/builtins-object-12):getTypeName="range"、
+    // stringValue="[range:1.0-3.0]" 格式、numberValue=0(接口默认)。
+    @Override public String getTypeName() { return "range"; }
+    @Override public String stringValue() { return "[range:" + start + "-" + end + "]"; }
     @Override public boolean canMath() { return false; }
 }

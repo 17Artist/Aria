@@ -31,12 +31,16 @@ KISS — 简单、直接、不过度设计。
 `var`、`val`、`global`、`server`、`client` 不是关键字，而是普通标识符，通过 `.` 运算符分发到不同的存储层：
 
 ```aria
-var.x = 10          // 局部可变
-val.PI = 3.14       // 局部不可变
+var.x = 10          // 局部可变（跨执行持久）
+val.slot            // 宿主注入的只读槽（脚本写入被静默忽略）
 global.score = 0    // 全局共享，线程安全
 server.config        // 读取触发 listener
 client.name = 'A'   // 写入触发 listener
+x = 10              // 裸名：当前执行内的临时变量
 ```
+
+> 裸名与 `var.` / `val.` 是**互相隔离**的命名空间（读写互不回退），
+> `val.` 只能由 Java 宿主写入——详见[变量系统](variables)。
 
 ### 箭头函数
 
@@ -74,10 +78,14 @@ class Animal {
 通过 `use()` 函数直接访问 JVM 类：
 
 ```aria
-val.HashMap = use('java.util.HashMap')
-val.map = HashMap()
-val.System = use('java.lang.System')
-System.out.println('hello from aria')
+HashMap = use('java.util.HashMap')
+m = HashMap()
+m.put('key', 'value')
+
+StringBuilder = use('java.lang.StringBuilder')
+sb = StringBuilder('hello')
+sb.append(' from aria')
+print(sb.toString())    // hello from aria
 ```
 
 ## 技术架构
@@ -108,10 +116,10 @@ print('Hello, Aria!')
 ### 变量
 
 ```aria
-var.name = 'World'
-val.PI = 3.14159
-var.msg = "Hello, {name}!"
-print(msg)
+name = 'World'              // 裸名临时变量
+var.count = 0               // var：持久存储
+msg = "Hello, {name}!"      // 双引号字符串插值（插值读裸名作用域）
+print(msg)                  // Hello, World!
 ```
 
 ### 函数
@@ -126,6 +134,16 @@ print(greet('Aria'))    // Hello, Aria!
 ### 类
 
 ```aria
+class Animal {
+    var.name = 'unknown'
+    var.age = 0
+
+    new = -> {
+        self.name = args[0]
+        self.age = args[1]
+    }
+}
+
 class Dog extends Animal {
     var.breed = 'unknown'
 
@@ -139,7 +157,7 @@ class Dog extends Animal {
     }
 }
 
-val.dog = Dog('Rex', 3, 'Labrador')
+dog = Dog('Rex', 3, 'Labrador')
 print(dog.speak())           // Rex barks!
 ```
 

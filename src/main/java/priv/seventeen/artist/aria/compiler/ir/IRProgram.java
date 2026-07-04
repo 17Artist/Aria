@@ -44,6 +44,8 @@ public class IRProgram {
     // -1=未计算, 0=无该类操作（可省数组分配）, 1=有
     private volatile byte hasVarOpsFlag = -1;
     private volatile byte hasScopeOpsFlag = -1;
+    // inline 解释器整体可执行性缓存(variables-3/async-2)：-1=未计算, 0=含不支持指令(整体走完整解释器), 1=可 inline
+    private volatile byte inlineSupportFlag = -1;
 
     public IRProgram(String name) {
         this.name = name;
@@ -86,4 +88,6 @@ public class IRProgram {
     public void setHasVarOpsFlag(byte flag) { this.hasVarOpsFlag = flag; }
     public byte getHasScopeOpsFlag() { return hasScopeOpsFlag; }
     public void setHasScopeOpsFlag(byte flag) { this.hasScopeOpsFlag = flag; }
+    public byte getInlineSupportFlag() { return inlineSupportFlag; }
+    public void setInlineSupportFlag(byte flag) { this.inlineSupportFlag = flag; }
 }

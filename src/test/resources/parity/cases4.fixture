@@ -1,0 +1,159 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases4.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | PASS
+--- SRC
+s = 1
+while
+(s < 0) {
+s = 2
+}
+return s
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 2 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码(错误原因：表达式语句解析失败))
+--- SRC
+return "a{}b"
+--- EXPECT
+R1 OK ab ##StringValue
+R2 OK ab ##StringValue
+R3 OK ab ##StringValue
+R4 OK ab ##StringValue
+R5 OK ab ##StringValue
+--- END
+
+### CASE 3 | PASS
+--- SRC
+return "a{b"
+--- EXPECT
+R1 OK ab ##StringValue
+R2 OK ab ##StringValue
+R3 OK ab ##StringValue
+R4 OK ab ##StringValue
+R5 OK ab ##StringValue
+--- END
+
+### CASE 4 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: )
+--- SRC
+
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 5 | PASS
+--- SRC
+x~=5
+return x
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 6 | PASS
+--- SRC
+return 1~~range(1,2)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 7 | PASS
+--- SRC
+return 'C:\new\tab'
+--- EXPECT
+R1 OK C:\new\tab ##StringValue
+R2 OK C:\new\tab ##StringValue
+R3 OK C:\new\tab ##StringValue
+R4 OK C:\new\tab ##StringValue
+R5 OK C:\new\tab ##StringValue
+--- END
+
+### CASE 8 | PASS
+--- SRC
+return "x{ 'a' + 'b' }y"
+--- EXPECT
+R1 OK xaby ##StringValue
+R2 OK xaby ##StringValue
+R3 OK xaby ##StringValue
+R4 OK xaby ##StringValue
+R5 OK xaby ##StringValue
+--- END
+
+### CASE 9 | PASS
+--- SRC
+x = true
+? 1
+: 2
+return x
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 10 | PASS
+--- SRC
+r = 5
+t = r
+? 'yes' : 'no'
+return t
+--- EXPECT
+R1 OK yes ##StringValue
+R2 OK yes ##StringValue
+R3 OK yes ##StringValue
+R4 OK yes ##StringValue
+R5 OK yes ##StringValue
+--- END
+
+### CASE 11 | PASS
+--- SRC
+s = 0
+for
+(i in [1,2]) {
+s = s + i
+}
+return s
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 12 | PASS
+--- SRC
+m = {'a': 1}
+return m
+.size()
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END

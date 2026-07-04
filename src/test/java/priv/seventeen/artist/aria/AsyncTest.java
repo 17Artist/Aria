@@ -34,51 +34,51 @@ public class AsyncTest {
     private String str(String c) throws AriaException { return eval(c).stringValue(); }
 
     @Test void asyncAwaitValue() throws Exception {
-        assertEquals(42.0, num("var.p = async { return 42 }\nreturn await p"), 1e-9);
+        assertEquals(42.0, num("var.p = async { return 42 }\nreturn await var.p"), 1e-9);
     }
 
     @Test void asyncClosureCapture() throws Exception {
-        // async body 应能读到定义处外层变量（闭包捕获）
-        assertEquals(6.0, num("var.x = 5\nvar.p = async { return x + 1 }\nreturn await p"), 1e-9);
+        assertEquals(6.0, num("var.x = 5\nvar.p = async { return var.x + 1 }\nreturn await var.p"), 1e-9);
+        assertEquals(1.0, num("x = 5\nvar.p = async { return x + 1 }\nreturn await var.p"), 1e-9);
     }
 
     @Test void asyncStringResult() throws Exception {
-        assertEquals("hi-bob", str("var.name = 'bob'\nvar.p = async { return 'hi-' + name }\nreturn await p"));
+        assertEquals("hi-bob", str("var.name = 'bob'\nvar.p = async { return 'hi-' + var.name }\nreturn await var.p"));
     }
 
     @Test void asyncRunsExactlyOnce() throws Exception {
         // 关键回归：旧实现会在主线程 + 线程池重复执行 body。真异步应只执行一次。
         double once = num("global.asyncOnce = 0\n"
                 + "var.p = async { global.asyncOnce = global.asyncOnce + 1\n return 1 }\n"
-                + "var.r = await p\n"
+                + "var.r = await var.p\n"
                 + "return global.asyncOnce\n");
         assertEquals(1.0, once, 1e-9, "async body 应恰好执行一次（不重复）");
     }
 
     @Test void asyncExceptionPropagatesToAwait() {
         // async body 抛异常 → Promise reject → await 抛出
-        assertThrows(Exception.class, () -> eval("var.p = async { throw 'boom' }\nreturn await p"));
+        assertThrows(Exception.class, () -> eval("var.p = async { throw 'boom' }\nreturn await var.p"));
     }
 
     @Test void asyncMapSpreadInBody() throws Exception {
-        assertEquals(2.0, num("var.p = async { return {...{'a':1}, 'b':2} }\nvar.m = await p\nreturn m.size()"), 1e-9);
+        assertEquals(2.0, num("var.p = async { return {...{'a':1}, 'b':2} }\nvar.m = await var.p\nreturn var.m.size()"), 1e-9);
     }
 
     @Test void asyncTryCatchInBody() throws Exception {
-        assertEquals("z", str("var.p = async { try { throw 'z' } catch (e) { return e } }\nreturn await p"));
+        assertEquals("z", str("var.p = async { try { throw 'z' } catch (e) { return e } }\nreturn await var.p"));
     }
 
     @Test void asyncSandboxPropagation() {
         // worker 线程必须继承沙箱：受限沙箱下 async body 用 fs 应被阻止（await 抛出）
         SandboxConfig sb = SandboxConfig.builder().allowedNamespaces("math").maxInstructions(100000).build();
         assertThrows(Exception.class, () ->
-            Aria.eval("var.p = async { return fs.exists('x') }\nreturn await p", Aria.createContext(), sb));
+            Aria.eval("var.p = async { return fs.exists('x') }\nreturn await var.p", Aria.createContext(), sb));
     }
 
     @Test void asyncSandboxAllowsWhitelisted() throws Exception {
         // 受限沙箱下 async body 用白名单内的 math 应正常
         SandboxConfig sb = SandboxConfig.builder().allowedNamespaces("math").maxInstructions(100000).build();
-        IValue<?> r = Aria.eval("var.p = async { return math.abs(-9) }\nreturn await p", Aria.createContext(), sb);
+        IValue<?> r = Aria.eval("var.p = async { return math.abs(-9) }\nreturn await var.p", Aria.createContext(), sb);
         assertEquals(9.0, r.numberValue(), 1e-9);
     }
 
@@ -88,7 +88,7 @@ public class AsyncTest {
             "var.a = async { return 1 }\n" +
             "var.b = async { return 2 }\n" +
             "var.c = async { return 3 }\n" +
-            "return (await a) + (await b) + (await c)\n");
+            "return (await var.a) + (await var.b) + (await var.c)\n");
         assertEquals(6.0, sum, 1e-9);
     }
 }

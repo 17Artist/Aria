@@ -1,0 +1,1258 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases_findings2.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | PASS | FINDING controlflow-01
+--- SRC
+// FINDING controlflow-01 REWRITE range endpoint
+r = 0
+for (i in range(1,3)) {
+r = r + 1
+}
+return r
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 2 | PASS | FINDING controlflow-02
+--- SRC
+// FINDING controlflow-02 REWRITE reverse range
+r = ""
+for (i in range(3,1)) {
+r = r + "x"
+}
+return r
+--- EXPECT
+R1 OK  ##StringValue
+R2 OK  ##StringValue
+R3 OK  ##StringValue
+R4 OK  ##StringValue
+R5 OK  ##StringValue
+--- END
+
+### CASE 3 | EXPECTED | FINDING controlflow-02b
+# Aria free-zone (Shimmer R1: OK: 11.0 ##NumberValue)
+--- SRC
+// FINDING controlflow-02b REWRITE range step param
+r = 0
+for (i in range(0,10,2)) {
+r = r + 1
+}
+return r
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 4 | PASS | FINDING controlflow-03
+--- SRC
+// FINDING controlflow-03 REWRITE switch re-compare
+x = 1
+r = ""
+switch(x){
+case 1 {
+r = r + "a"
+}
+case 2 {
+r = r + "b"
+}
+else {
+r = r + "e"
+}
+}
+return r
+--- EXPECT
+R1 OK ae ##StringValue
+R2 OK ae ##StringValue
+R3 OK ae ##StringValue
+R4 OK ae ##StringValue
+R5 OK ae ##StringValue
+--- END
+
+### CASE 5 | PASS | FINDING controlflow-03b
+--- SRC
+// FINDING controlflow-03b REWRITE switch with break
+x = 1
+r = ""
+switch(x){
+case 1 {
+r = r + "a"
+break
+}
+case 2 {
+r = r + "b"
+}
+else {
+r = r + "e"
+}
+}
+return r
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 6 | PASS | FINDING controlflow-04
+--- SRC
+// FINDING controlflow-04 REWRITE while break leak
+var.cf04 = "start"
+while(true){
+break
+}
+var.cf04 = "after"
+return var.cf04
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 7 | PASS | FINDING controlflow-04b
+--- SRC
+// FINDING controlflow-04b REWRITE while break inside for
+s = 0
+for (i in [1,2,3]) {
+while(true){
+break
+}
+s = s + i
+}
+return s
+--- EXPECT
+R1 OK 0.0 ##NumberValue
+R2 OK 0.0 ##NumberValue
+R3 OK 0.0 ##NumberValue
+R4 OK 0.0 ##NumberValue
+R5 OK 0.0 ##NumberValue
+--- END
+
+### CASE 8 | PASS | FINDING controlflow-05
+--- SRC
+// FINDING controlflow-05 REWRITE break outside loop
+var.cf05 = "before"
+if (true) {
+break
+}
+var.cf05 = "after"
+return var.cf05
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 9 | PASS | FINDING controlflow-07
+--- SRC
+// FINDING controlflow-07 REWRITE missing args
+f = -> {
+if (args[0] == none) {
+return "default"
+}
+return args[0]
+}
+return f()
+--- EXPECT
+R1 OK default ##StringValue
+R2 OK default ##StringValue
+R3 OK default ##StringValue
+R4 OK default ##StringValue
+R5 OK default ##StringValue
+--- END
+
+### CASE 10 | PASS | FINDING controlflow-08
+--- SRC
+// FINDING controlflow-08 REWRITE implicit if return
+if (true) {
+"yes"
+} else {
+"no"
+}
+--- EXPECT
+R1 OK yes ##StringValue
+R2 OK yes ##StringValue
+R3 OK yes ##StringValue
+R4 OK yes ##StringValue
+R5 OK yes ##StringValue
+--- END
+
+### CASE 11 | PASS | FINDING controlflow-08b
+--- SRC
+// FINDING controlflow-08b REWRITE implicit while return
+s = 0
+while (s < 3) {
+s = s + 1
+}
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 12 | PASS | FINDING controlflow-09
+--- SRC
+// FINDING controlflow-09 REWRITE for-in none element
+var.cf09 = [1, none, 3]
+r = 0
+for (x in var.cf09) {
+r = r + 1
+}
+return r
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 13 | EXPECTED | FINDING controlflow-10
+# Aria free-zone (Shimmer R1: ERR: ShimmerRuntimeException: 单元: [t] 运行时错误, 位于第 3 行, 到第 3 行 | 请检查: for (e in var.cf10) { |  | 错误信息: for-in语句目标表达式目标非可迭代对象或定义变量数量错误)
+--- SRC
+// FINDING controlflow-10 REWRITE map single-var for-in
+var.cf10 = {"a": 1}
+for (e in var.cf10) {
+return e
+}
+--- EXPECT
+R1 OK [a, 1.0] ##ListValue
+R2 OK [a, 1.0] ##ListValue
+R3 OK [a, 1.0] ##ListValue
+R4 OK [a, 1.0] ##ListValue
+R5 OK [a, 1.0] ##ListValue
+--- END
+
+### CASE 14 | PASS | FINDING controlflow-10b
+--- SRC
+// FINDING controlflow-10b REWRITE map 3-var for-in
+var.cf10b = {"a": 1}
+r = ""
+for (k, v, x in var.cf10b) {
+r = "" + k + "|" + v + "|" + x
+}
+return r
+--- EXPECT
+R1 OK a|1.0| ##StringValue
+R2 OK a|1.0| ##StringValue
+R3 OK a|1.0| ##StringValue
+R4 OK a|1.0| ##StringValue
+R5 OK a|1.0| ##StringValue
+--- END
+
+### CASE 15 | PASS | FINDING controlflow-11
+--- SRC
+// FINDING controlflow-11 REWRITE loop var visibility
+i = 99
+for (i in [1,2,3]) {
+i = i
+}
+return i
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 16 | PASS | FINDING controlflow-14
+--- SRC
+// FINDING controlflow-14 REWRITE explicit index OOB in lambda
+f = -> {
+l = [1,2]
+return l[5]
+}
+return f()
+--- EXPECT
+R1 ERR AriaRuntimeException: 列表索引越界: 5 (size=2) (line 6:8)
+R2 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R3 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R4 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R5 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+--- END
+
+### CASE 17 | PASS | FINDING controlflow-16
+--- SRC
+// FINDING controlflow-16 REWRITE recursion depth 1000
+f = -> {
+if (args[0] <= 0) {
+return 0
+}
+return f(args[0] - 1)
+}
+return f(1000)
+--- EXPECT
+R1 ERR AriaRuntimeException: 不支持的后缀运算: (line 8:8)
+R2 ERR AriaRuntimeException: 不支持的后缀运算:
+R3 ERR AriaRuntimeException: 不支持的后缀运算:
+R4 ERR AriaRuntimeException: 不支持的后缀运算:
+R5 ERR AriaRuntimeException: 不支持的后缀运算:
+--- END
+
+### CASE 18 | EXPECTED | FINDING controlflow-17
+# Aria free-zone (Shimmer R1: ERR: ShimmerRuntimeException: 单元: [t] 运行时错误, 位于第 3 行, 到第 3 行 | 请检查: for (c in 5) { |  | 错误信息: for-in语句目标表达式目标非可迭代对象或定义变量数量错误)
+--- SRC
+// FINDING controlflow-17 REWRITE for-in number target
+r = "ok"
+for (c in 5) {
+r = "looped"
+}
+return r
+--- EXPECT
+R1 OK ok ##StringValue
+R2 OK ok ##StringValue
+R3 OK ok ##StringValue
+R4 OK ok ##StringValue
+R5 OK ok ##StringValue
+--- END
+
+### CASE 19 | PASS | FINDING builtins-static-9
+--- SRC
+// FINDING builtins-static-9 REWRITE range single arg
+c = 0
+for (i in range(5)) {
+c = c + 1
+}
+return c
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 20 | PASS | FINDING builtins-static-9b
+--- SRC
+// FINDING builtins-static-9b REWRITE range stringValue
+return "" + range(1,3)
+--- EXPECT
+R1 OK [range:1.0-3.0] ##StringValue
+R2 OK [range:1.0-3.0] ##StringValue
+R3 OK [range:1.0-3.0] ##StringValue
+R4 OK [range:1.0-3.0] ##StringValue
+R5 OK [range:1.0-3.0] ##StringValue
+--- END
+
+### CASE 21 | PASS | FINDING builtins-static-3
+--- SRC
+// FINDING builtins-static-3 REWRITE Math.pi
+return Math.pi() * 2
+--- EXPECT
+R1 OK 6.283185307179586 ##NumberValue
+R2 OK 6.283185307179586 ##NumberValue
+R3 OK 6.283185307179586 ##NumberValue
+R4 OK 6.283185307179586 ##NumberValue
+R5 OK 6.283185307179586 ##NumberValue
+--- END
+
+### CASE 22 | PASS | FINDING builtins-static-4
+--- SRC
+// FINDING builtins-static-4 REWRITE Math.nextAfter
+return Math.nextAfter(1, 2)
+--- EXPECT
+R1 OK 1.0000000000000002 ##NumberValue
+R2 OK 1.0000000000000002 ##NumberValue
+R3 OK 1.0000000000000002 ##NumberValue
+R4 OK 1.0000000000000002 ##NumberValue
+R5 OK 1.0000000000000002 ##NumberValue
+--- END
+
+### CASE 23 | PASS | FINDING builtins-object-12
+--- SRC
+// FINDING builtins-object-12 REWRITE UUID length determinism
+var.u12 = UUID("not-a-uuid")
+var.s12 = "" + var.u12
+return var.s12.length()
+--- EXPECT
+R1 OK 36.0 ##NumberValue
+R2 OK 36.0 ##NumberValue
+R3 OK 36.0 ##NumberValue
+R4 OK 36.0 ##NumberValue
+R5 OK 36.0 ##NumberValue
+--- END
+
+### CASE 24 | PASS | FINDING builtins-static-8
+--- SRC
+// FINDING builtins-static-8 REWRITE UUID version
+return UUID().version()
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 25 | PASS | FINDING variables-1
+--- SRC
+// FINDING variables-1 REWRITE var compound inc value
+var.v1 += 1
+return var.v1
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 26 | PASS | FINDING variables-1b
+--- SRC
+// FINDING variables-1b REWRITE var compound inc as last stmt
+var.v1b += 1
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 27 | PASS | FINDING variables-2
+--- SRC
+// FINDING variables-2 REWRITE string var += 1
+var.v2 = "5"
+var.v2 += 1
+return var.v2
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 28 | PASS | FINDING jit-10
+--- SRC
+// FINDING jit-10 REWRITE nonnumeric string += 1
+var.j10 = "a"
+var.j10 += 1
+return var.j10
+--- EXPECT
+R1 OK a1.0 ##StringValue
+R2 OK a1.0 ##StringValue
+R3 OK a1.0 ##StringValue
+R4 OK a1.0 ##StringValue
+R5 OK a1.0 ##StringValue
+--- END
+
+### CASE 29 | PASS | FINDING variables-5
+--- SRC
+// FINDING variables-5 REWRITE while loop value capture
+var.v5 = []
+var.v5i = 0
+while (var.v5i < 3) {
+t = var.v5i + 100
+var.v5.add(t)
+var.v5i = var.v5i + 1
+}
+return "" + var.v5
+--- EXPECT
+R1 OK [100.0, 101.0, 102.0] ##StringValue
+R2 OK [100.0, 101.0, 102.0] ##StringValue
+R3 OK [100.0, 101.0, 102.0] ##StringValue
+R4 OK [100.0, 101.0, 102.0] ##StringValue
+R5 OK [100.0, 101.0, 102.0] ##StringValue
+--- END
+
+### CASE 30 | PASS | FINDING interop-2
+--- SRC
+// FINDING interop-2 REWRITE bare range for-in with var acc
+var.io2 = 0
+for (i in range(1,3)) {
+var.io2 = var.io2 + i
+}
+return var.io2
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 31 | PASS | FINDING gui-chain-1
+--- SRC
+// FINDING gui-chain-1 REWRITE bare range bare-c accumulation
+var.g1 = 0
+for (i in range(1, 3)) {
+var.g1 = var.g1 + 1
+}
+return var.g1
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 32 | PASS | FINDING builtins-static-1
+--- SRC
+// FINDING builtins-static-1 REWRITE bare c in range loop
+c2 = 0
+for (i in range(1,3)) {
+c2 = c2 + 1
+}
+return c2
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 33 | PASS | FINDING interop-11
+--- SRC
+// FINDING interop-11 REWRITE range stringValue via var
+var.io11 = range(1,5)
+return '' + var.io11
+--- EXPECT
+R1 OK [range:1.0-5.0] ##StringValue
+R2 OK [range:1.0-5.0] ##StringValue
+R3 OK [range:1.0-5.0] ##StringValue
+R4 OK [range:1.0-5.0] ##StringValue
+R5 OK [range:1.0-5.0] ##StringValue
+--- END
+
+### CASE 34 | PASS | FINDING operators-15
+--- SRC
+// FINDING operators-15 REWRITE list minus numeric string
+var.o15 = [10, 20, 30]
+var.o15r = var.o15 - "1"
+return "" + var.o15
+--- EXPECT
+R1 OK [10.0, 30.0] ##StringValue
+R2 OK [10.0, 30.0] ##StringValue
+R3 OK [10.0, 30.0] ##StringValue
+R4 OK [10.0, 30.0] ##StringValue
+R5 OK [10.0, 30.0] ##StringValue
+--- END
+
+### CASE 35 | PASS | FINDING operators-15b
+--- SRC
+// FINDING operators-15b REWRITE list minus number
+var.o15b = [10, 20, 30]
+var.o15br = var.o15b - 1
+return "" + var.o15b
+--- EXPECT
+R1 OK [10.0, 30.0] ##StringValue
+R2 OK [10.0, 30.0] ##StringValue
+R3 OK [10.0, 30.0] ##StringValue
+R4 OK [10.0, 30.0] ##StringValue
+R5 OK [10.0, 30.0] ##StringValue
+--- END
+
+### CASE 36 | PASS | FINDING operators-15c
+--- SRC
+// FINDING operators-15c REWRITE list minus result value
+var.o15c = [10, 20, 30]
+return "" + (var.o15c - "1")
+--- EXPECT
+R1 OK [10.0, 30.0] ##StringValue
+R2 OK [10.0, 30.0] ##StringValue
+R3 OK [10.0, 30.0] ##StringValue
+R4 OK [10.0, 30.0] ##StringValue
+R5 OK [10.0, 30.0] ##StringValue
+--- END
+
+### CASE 37 | PASS | FINDING jit-19
+--- SRC
+// FINDING jit-19 REWRITE closure scope write
+x = 1
+var.j19 = -> {
+x = x + 10
+return x
+}
+var.j19a = var.j19()
+var.j19b = var.j19()
+return "" + var.j19a + "," + var.j19b + "," + x
+--- EXPECT
+R1 OK 10.0,10.0,1.0 ##StringValue
+R2 OK 10.0,10.0,1.0 ##StringValue
+R3 OK 10.0,10.0,1.0 ##StringValue
+R4 OK 10.0,10.0,1.0 ##StringValue
+R5 OK 10.0,10.0,1.0 ##StringValue
+--- END
+
+### CASE 38 | PASS | FINDING jit-12
+--- SRC
+// FINDING jit-12 REWRITE lambda not simple binary
+var.j12 = -> {
+return args[0] * 2 + args[1]
+}
+return var.j12(3, 4)
+--- EXPECT
+R1 OK 10.0 ##NumberValue
+R2 OK 10.0 ##NumberValue
+R3 OK 10.0 ##NumberValue
+R4 OK 10.0 ##NumberValue
+R5 OK 10.0 ##NumberValue
+--- END
+
+### CASE 39 | PASS | FINDING jit-13
+--- SRC
+// FINDING jit-13 REWRITE lambda arg order
+var.j13 = -> {
+return args[1] - args[0]
+}
+return var.j13(3, 10)
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 40 | PASS | FINDING jit-13b
+--- SRC
+// FINDING jit-13b REWRITE lambda mod
+var.j13b = -> {
+return args[0] % args[1]
+}
+return var.j13b(7, 3)
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 41 | PASS | FINDING jit-9
+--- SRC
+// FINDING jit-9 REWRITE numeric lambda with string args
+var.j9 = -> {
+return args[0] * args[1]
+}
+return var.j9("3", "4")
+--- EXPECT
+R1 OK 12.0 ##NumberValue
+R2 OK 12.0 ##NumberValue
+R3 OK 12.0 ##NumberValue
+R4 OK 12.0 ##NumberValue
+R5 OK 12.0 ##NumberValue
+--- END
+
+### CASE 42 | EXPECTED | FINDING jit-18
+# Aria free-zone (Shimmer R1: ERR: ShimmerRuntimeException: 单元: [t] 运行时错误, 位于第 4 行, 到第 4 行 | 请检查: for (e in var.j18) { |  | 错误信息: for-in语句目标表达式目标非可迭代对象或定义变量数量错误)
+--- SRC
+// FINDING jit-18 REWRITE map literal for-in sum
+var.j18 = {'a': 10, 'b': 20}
+var.j18s = 0
+for (e in var.j18) {
+var.j18s = var.j18s + e[1]
+}
+return var.j18s
+--- EXPECT
+R1 OK 30.0 ##NumberValue
+R2 OK 30.0 ##NumberValue
+R3 OK 30.0 ##NumberValue
+R4 OK 30.0 ##NumberValue
+R5 OK 30.0 ##NumberValue
+--- END
+
+### CASE 43 | PASS | FINDING jit-18b
+--- SRC
+// FINDING jit-18b REWRITE map keys after warmup
+var.j18b = {'a': 1}
+var.j18k = var.j18b.keys()
+return "" + var.j18k
+--- EXPECT
+R1 OK [a] ##StringValue
+R2 OK [a] ##StringValue
+R3 OK [a] ##StringValue
+R4 OK [a] ##StringValue
+R5 OK [a] ##StringValue
+--- END
+
+### CASE 44 | PASS | FINDING builtins-object-6
+--- SRC
+// FINDING builtins-object-6 REWRITE small map put/size
+var.bo6 = {"k": 1}
+var.bo6.put("x", 2)
+return var.bo6.size()
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 45 | PASS | FINDING builtins-object-10
+--- SRC
+// FINDING builtins-object-10 REWRITE putAll small map
+var.bo10 = {"a":1,"b":2,"c":3,"d":4,"e":5}
+var.bo10.putAll({"x": 9})
+return var.bo10.size()
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 46 | PASS | FINDING builtins-object-7
+--- SRC
+// FINDING builtins-object-7 REWRITE containsAll
+r = "no"
+if([1,2,3].containsAll([1,2])){
+r = "yes"
+}
+return r
+--- EXPECT
+R1 OK yes ##StringValue
+R2 OK yes ##StringValue
+R3 OK yes ##StringValue
+R4 OK yes ##StringValue
+R5 OK yes ##StringValue
+--- END
+
+### CASE 47 | SKIP | FINDING async-1
+# TIMING (J4): async fire-and-forget increment races the read; P1 R5=3.0 vs P2 all 0.0 — nondeterministic, would flake
+--- SRC
+// FINDING async-1 REWRITE async var inc
+var.a1 = 0
+var.a1p = async {
+var.a1 = var.a1 + 1
+}
+await a1p
+return var.a1
+--- EXPECT
+--- END
+
+### CASE 48 | EXPECTED | FINDING async-3
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: var.a3f = -> { | )
+--- SRC
+// FINDING async-3 REWRITE async args passthrough
+var.a3f = -> {
+var.a3p = async {
+return args[0]
+}
+return await a3p
+}
+return var.a3f(42)
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 49 | EXPECTED | FINDING async-4
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 4 行,第 1 列 | 请检查: var.a4p = async { | )
+--- SRC
+// FINDING async-4 REWRITE async scope isolation
+xa4 = 5
+ya4 = 1
+var.a4p = async {
+global.a4seen = xa4
+ya4 = 99
+return 0
+}
+var.a4r = await a4p
+return "" + global.a4seen + "|" + ya4
+--- EXPECT
+R1 OK |1.0 ##StringValue
+R2 OK |1.0 ##StringValue
+R3 OK |1.0 ##StringValue
+R4 OK |1.0 ##StringValue
+R5 OK |1.0 ##StringValue
+--- END
+
+### CASE 50 | PASS | FINDING jit-4
+--- SRC
+// FINDING jit-4 REWRITE none coalesce via ternary
+var.j4 = var.j4unset == none ? 5 : var.j4unset
+return var.j4
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 51 | PASS | FINDING jit-5
+--- SRC
+// FINDING jit-5 REWRITE negative truthiness
+var.j5 = 0 - 1
+var.j5f = !var.j5
+return var.j5f
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 52 | PASS | FINDING jit-6
+--- SRC
+// FINDING jit-6 REWRITE div by zero var
+var.j6 = 0
+var.j6r = 10 / var.j6
+return var.j6r
+--- EXPECT
+R1 OK 0.0 ##NumberValue
+R2 OK 0.0 ##NumberValue
+R3 OK 0.0 ##NumberValue
+R4 OK 0.0 ##NumberValue
+R5 OK 0.0 ##NumberValue
+--- END
+
+### CASE 53 | PASS | FINDING jit-6b
+--- SRC
+// FINDING jit-6b REWRITE mod by zero var
+var.j6b = 0
+var.j6br = 10 % var.j6b
+return var.j6br
+--- EXPECT
+R1 OK 0.0 ##NumberValue
+R2 OK 0.0 ##NumberValue
+R3 OK 0.0 ##NumberValue
+R4 OK 0.0 ##NumberValue
+R5 OK 0.0 ##NumberValue
+--- END
+
+### CASE 54 | PASS | FINDING jit-7
+--- SRC
+// FINDING jit-7 REWRITE list index OOB toplevel
+var.j7 = [1, 2]
+var.j7x = var.j7[5]
+return var.j7x
+--- EXPECT
+R1 ERR AriaRuntimeException: 列表索引越界: 5 (size=2) (line 3:11)
+R2 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R3 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R4 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R5 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+--- END
+
+### CASE 55 | PASS | FINDING jit-15
+--- SRC
+// FINDING jit-15 REWRITE scope vs var same-name method call
+var.j15 = ["V"]
+j15 = ["S"]
+j15.add("x")
+return "" + j15[1] + "|" + var.j15.size()
+--- EXPECT
+R1 OK x|1.0 ##StringValue
+R2 OK x|1.0 ##StringValue
+R3 OK x|1.0 ##StringValue
+R4 OK x|1.0 ##StringValue
+R5 OK x|1.0 ##StringValue
+--- END
+
+### CASE 56 | PASS | FINDING jit-16
+--- SRC
+// FINDING jit-16 REWRITE ternary plus const fold
+var.j16 = 1
+var.j16y = (var.j16 > 0 ? 1 : 2) + 3
+return var.j16y
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 57 | PASS | FINDING operators-13
+--- SRC
+// FINDING operators-13 REWRITE map merge and stringify
+var.o13 = {"a": 1}
+var.o13b = {"b": 2}
+var.o13 = var.o13 + var.o13b
+return "" + var.o13
+--- EXPECT
+R1 OK {a:1.0,b:2.0} ##StringValue
+R2 OK {a:1.0,b:2.0} ##StringValue
+R3 OK {a:1.0,b:2.0} ##StringValue
+R4 OK {a:1.0,b:2.0} ##StringValue
+R5 OK {a:1.0,b:2.0} ##StringValue
+--- END
+
+### CASE 58 | PASS | FINDING builtins-object-1
+--- SRC
+// FINDING builtins-object-1 REWRITE list remove by value
+var.bo1 = ["a","b","c"]
+var.bo1.remove("b")
+return var.bo1[0] + "|" + var.bo1.size()
+--- EXPECT
+R1 OK a|2.0 ##StringValue
+R2 OK a|2.0 ##StringValue
+R3 OK a|2.0 ##StringValue
+R4 OK a|2.0 ##StringValue
+R5 OK a|2.0 ##StringValue
+--- END
+
+### CASE 59 | PASS | FINDING interop-5
+--- SRC
+// FINDING interop-5 REWRITE list remove value missing
+var.io5 = [9,8,7]
+var.io5.remove(2)
+return '' + var.io5[0] + ',' + var.io5[1] + ',' + var.io5.size()
+--- EXPECT
+R1 OK 9.0,8.0,3.0 ##StringValue
+R2 OK 9.0,8.0,3.0 ##StringValue
+R3 OK 9.0,8.0,3.0 ##StringValue
+R4 OK 9.0,8.0,3.0 ##StringValue
+R5 OK 9.0,8.0,3.0 ##StringValue
+--- END
+
+### CASE 60 | PASS | FINDING builtins-object-2
+--- SRC
+// FINDING builtins-object-2 REWRITE removeIndex
+var.bo2 = [1,2,3]
+var.bo2.removeIndex(0)
+return var.bo2.size()
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 61 | PASS | FINDING builtins-object-3
+--- SRC
+// FINDING builtins-object-3 REWRITE add(index, element)
+var.bo3 = ["a","c"]
+var.bo3.add(1, "b")
+return var.bo3[1] + "|" + var.bo3.size()
+--- EXPECT
+R1 OK b|3.0 ##StringValue
+R2 OK b|3.0 ##StringValue
+R3 OK b|3.0 ##StringValue
+R4 OK b|3.0 ##StringValue
+R5 OK b|3.0 ##StringValue
+--- END
+
+### CASE 62 | PASS | FINDING builtins-object-4
+--- SRC
+// FINDING builtins-object-4 REWRITE contains eq semantics
+return [1,2,3].contains("2")
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 63 | PASS | FINDING builtins-object-5
+--- SRC
+// FINDING builtins-object-5 REWRITE split trailing + limit
+return "a,b,,".split(",").size()
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 64 | PASS | FINDING builtins-object-5b
+--- SRC
+// FINDING builtins-object-5b REWRITE split with limit
+return "a,b,c".split(",", 2).size()
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 65 | PASS | FINDING builtins-object-8
+--- SRC
+// FINDING builtins-object-8 REWRITE indexOf from
+return "abcabc".indexOf("a", 1)
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 66 | PASS | FINDING builtins-object-9
+--- SRC
+// FINDING builtins-object-9 REWRITE set returns old
+var.bo9 = ["a","b"]
+var.bo9old = var.bo9.set(0, "x")
+return "" + var.bo9old
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 67 | PASS | FINDING builtins-object-9b
+--- SRC
+// FINDING builtins-object-9b REWRITE subList full range
+var.bo9b = [1,2,3]
+return "" + var.bo9b.subList(0,3)
+--- EXPECT
+R1 OK  ##StringValue
+R2 OK  ##StringValue
+R3 OK  ##StringValue
+R4 OK  ##StringValue
+R5 OK  ##StringValue
+--- END
+
+### CASE 68 | PASS | FINDING operators-1
+--- SRC
+// FINDING operators-1 REWRITE loop escaped number values
+var.o1 = []
+for (i in [1, 2, 3]) {
+var.o1 = var.o1 + (i + 100)
+}
+return "" + var.o1
+--- EXPECT
+R1 OK [101.0, 102.0, 103.0] ##StringValue
+R2 OK [101.0, 102.0, 103.0] ##StringValue
+R3 OK [101.0, 102.0, 103.0] ##StringValue
+R4 OK [101.0, 102.0, 103.0] ##StringValue
+R5 OK [101.0, 102.0, 103.0] ##StringValue
+--- END
+
+### CASE 69 | PASS | FINDING operators-2
+--- SRC
+// FINDING operators-2 REWRITE concat aliasing
+var.o2a = "x" + "y"
+var.o2b = var.o2a + "z"
+return var.o2a + "|" + var.o2b
+--- EXPECT
+R1 OK xy|xyz ##StringValue
+R2 OK xy|xyz ##StringValue
+R3 OK xy|xyz ##StringValue
+R4 OK xy|xyz ##StringValue
+R5 OK xy|xyz ##StringValue
+--- END
+
+### CASE 70 | PASS | FINDING operators-3
+--- SRC
+// FINDING operators-3 REWRITE concat canBeNumber
+var.o3s = "" + 5
+var.o3a = var.o3s + 1
+var.o3b = var.o3s == 5
+var.o3c = var.o3s > 3
+return "" + var.o3a + "|" + var.o3b + "|" + var.o3c
+--- EXPECT
+R1 OK 6.0|true|true ##StringValue
+R2 OK 6.0|true|true ##StringValue
+R3 OK 6.0|true|true ##StringValue
+R4 OK 6.0|true|true ##StringValue
+R5 OK 6.0|true|true ##StringValue
+--- END
+
+### CASE 71 | PASS | FINDING operators-5
+--- SRC
+// FINDING operators-5 REWRITE bool string eq
+var.o5f = true
+var.o5r = var.o5f == "true"
+var.o5r2 = "false" == false
+return "" + var.o5r + "|" + var.o5r2
+--- EXPECT
+R1 OK true|true ##StringValue
+R2 OK true|true ##StringValue
+R3 OK true|true ##StringValue
+R4 OK true|true ##StringValue
+R5 OK true|true ##StringValue
+--- END
+
+### CASE 72 | PASS | FINDING operators-7
+--- SRC
+// FINDING operators-7 REWRITE bool arithmetic
+var.o7a = true + "1"
+var.o7b = true - 1
+var.o7c = true + true
+return "" + var.o7a + "|" + var.o7b + "|" + var.o7c
+--- EXPECT
+R1 OK true1|2.0|truetrue ##StringValue
+R2 OK true1|2.0|truetrue ##StringValue
+R3 OK true1|2.0|truetrue ##StringValue
+R4 OK true1|2.0|truetrue ##StringValue
+R5 OK true1|2.0|truetrue ##StringValue
+--- END
+
+### CASE 73 | PASS | FINDING operators-9
+--- SRC
+// FINDING operators-9 REWRITE number minus dot string
+var.o9 = 10.5 - "."
+return "" + var.o9
+--- EXPECT
+R1 OK 105 ##StringValue
+R2 OK 105 ##StringValue
+R3 OK 105 ##StringValue
+R4 OK 105 ##StringValue
+R5 OK 105 ##StringValue
+--- END
+
+### CASE 74 | PASS | FINDING operators-11
+--- SRC
+// FINDING operators-11 REWRITE whitespace numeric string
+var.o11a = " 5" + 1
+var.o11b = " 2" > 1
+return "" + var.o11a + "|" + var.o11b
+--- EXPECT
+R1 OK 6.0|true ##StringValue
+R2 OK 6.0|true ##StringValue
+R3 OK 6.0|true ##StringValue
+R4 OK 6.0|true ##StringValue
+R5 OK 6.0|true ##StringValue
+--- END
+
+### CASE 75 | PASS | FINDING operators-14
+--- SRC
+// FINDING operators-14 REWRITE list/map stringify
+var.o14a = "" + [1, none]
+var.o14b = "" + {"k": 1}
+return var.o14a + "|" + var.o14b
+--- EXPECT
+R1 OK [1.0, ]|{k:1.0} ##StringValue
+R2 OK [1.0, ]|{k:1.0} ##StringValue
+R3 OK [1.0, ]|{k:1.0} ##StringValue
+R4 OK [1.0, ]|{k:1.0} ##StringValue
+R5 OK [1.0, ]|{k:1.0} ##StringValue
+--- END
+
+### CASE 76 | PASS | FINDING operators-6
+--- SRC
+// FINDING operators-6 REWRITE in-range semantics
+var.o6a = 5 ~~ range(1,5)
+var.o6b = 5 ~~ 5
+var.o6c = 3 ~~ [1,5]
+return "" + var.o6a + "|" + var.o6b + "|" + var.o6c
+--- EXPECT
+R1 OK true|false|false ##StringValue
+R2 OK true|false|false ##StringValue
+R3 OK true|false|false ##StringValue
+R4 OK true|false|false ##StringValue
+R5 OK true|false|false ##StringValue
+--- END
+
+### CASE 77 | PASS | FINDING operators-12
+--- SRC
+// FINDING operators-12 REWRITE recursive div zero fastpath
+var.o12 = -> {
+if (args[0] <= 0) {
+return 0
+}
+return 10 / (args[0] - 1) + var.o12(args[0] - 1)
+}
+return var.o12(2)
+--- EXPECT
+R1 OK 10.0 ##NumberValue
+R2 OK 10.0 ##NumberValue
+R3 OK 10.0 ##NumberValue
+R4 OK 10.0 ##NumberValue
+R5 OK 10.0 ##NumberValue
+--- END
+
+### CASE 78 | PASS | FINDING variables-7
+--- SRC
+// FINDING variables-7 REWRITE bare name vs var isolation
+var.v7 = 1
+v7 = 2
+return var.v7
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 79 | PASS | FINDING variables-7b
+--- SRC
+// FINDING variables-7b REWRITE bare read of var
+var.v7b = 5
+return v7b
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 80 | PASS | FINDING variables-8
+--- SRC
+// FINDING variables-8 REWRITE val write ignored
+val.v8 = 5
+return val.v8
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 81 | PASS | FINDING variables-9
+--- SRC
+// FINDING variables-9 REWRITE val read no scope fallback
+v9 = 9
+return val.v9
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 82 | PASS | FINDING variables-13
+--- SRC
+// FINDING variables-13 REWRITE var.x++ statement
+var.v13 = 1
+var.v13++
+return var.v13
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 83 | PASS | FINDING gui-chain-9
+--- SRC
+// FINDING gui-chain-9 REWRITE index OOB error format
+var.g9 = [1,2][5]
+--- EXPECT
+R1 ERR AriaRuntimeException: 列表索引越界: 5 (size=2) (line 2:10)
+R2 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R3 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R4 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R5 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+--- END

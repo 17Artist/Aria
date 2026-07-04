@@ -21,8 +21,10 @@ class Point {
 
 ## 字段声明
 
-- `var.name = value` — 可变字段，实例创建后可修改
-- `val.name = value` — 不可变字段，实例创建后不可修改
+类体内的 `var.name = value` 与 `val.name = value` **都声明实例字段**，两者语义等价
+（`val` 字段同样可以在实例上修改——历史上 `val` 表示"不可变"，为兼容 Shimmer
+语义已不再附带只读约束）。注意这与普通脚本中"`val.` 写入被静默忽略"不同：
+**类体内的 `val.x` 是字段声明语法**，正常生效。
 
 字段声明时可以指定默认值：
 
@@ -33,7 +35,7 @@ class Config {
     val.version = '1.0'
 }
 
-val.cfg = Config()
+cfg = Config()
 print(cfg.host)       // localhost
 print(cfg.version)    // 1.0
 ```
@@ -52,7 +54,7 @@ class Point {
     }
 }
 
-val.p = Point(10, 20)
+p = Point(10, 20)
 print(p.x + p.y)    // 30.0
 ```
 
@@ -70,7 +72,7 @@ class Calculator {
     }
 }
 
-val.calc = Calculator()
+calc = Calculator()
 print(calc.add(3, 4) + calc.mul(5, 6))    // 37.0
 ```
 
@@ -86,7 +88,7 @@ class Counter {
     }
 }
 
-val.c = Counter()
+c = Counter()
 c.increment()
 c.increment()
 c.increment()
@@ -105,8 +107,8 @@ class Box {
     }
 }
 
-val.a = Box(10)
-val.b = Box(20)
+a = Box(10)
+b = Box(20)
 print(a.value + b.value)    // 30.0
 ```
 
@@ -138,7 +140,7 @@ class Dog extends Animal {
     }
 }
 
-val.dog = Dog('Rex', 'Labrador')
+dog = Dog('Rex', 'Labrador')
 print(dog.speak())     // Rex barks!
 print(dog.name)        // Rex
 print(dog.breed)       // Labrador
@@ -162,7 +164,7 @@ class Dog extends Animal {
     }
 }
 
-val.dog = Dog('Rex', 'Labrador')
+dog = Dog('Rex', 'Labrador')
 print(dog.name + ' ' + dog.breed)    // Rex Labrador
 ```
 
@@ -199,7 +201,7 @@ class Dog extends Animal {
     }
 }
 
-val.dog = Dog('Rex', 3, 'Labrador')
+dog = Dog('Rex', 3, 'Labrador')
 print(dog.speak())    // Rex barks!
 print(dog.name)       // Rex
 ```
@@ -220,7 +222,7 @@ class Dog extends Animal {
     describe = -> { return super.describe() + ' (dog)' }
 }
 
-val.d = Dog('Rex')
+d = Dog('Rex')
 print(d.describe())  // Rex is an animal (dog)
 ```
 
@@ -274,8 +276,8 @@ class Rectangle extends Shape {
 }
 
 // 使用
-val.c = Circle('red', 5)
-val.r = Rectangle('blue', 4, 6)
+c = Circle('red', 5)
+r = Rectangle('blue', 4, 6)
 
 print(c.describe())    // red shape, area = 78.53975
 print(r.describe())    // blue shape, area = 24.0

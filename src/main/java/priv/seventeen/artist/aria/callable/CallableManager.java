@@ -44,16 +44,40 @@ public class CallableManager {
     private final Map<Class<?>, Map<String, ICallable>> objectFunctions = new ConcurrentHashMap<>();
     private final Map<String, ICallable> objectFunctionCache = new ConcurrentHashMap<>();
 
+    /**
+     * A4(jit-15/17)：注册代数计数器——任何 register(Static/Object/Constructor)/alias/clear 都自增。
+     * JIT 调用点缓存(StaticCallCache)记录装配时代数,查表时比对;宿主重注册(reload)后旧缓存立即失效。
+     */
+    private final java.util.concurrent.atomic.AtomicLong generation = new java.util.concurrent.atomic.AtomicLong();
+
+    /** A4(jit-17)：内建默认实现快照——JIT 内联白名单(math.* 等)仅当当前注册仍为默认实例时才允许内联。 */
+    private final Map<String, ICallable> defaultStatics = new ConcurrentHashMap<>();
+
     private CallableManager() {}
 
+    public long getGeneration() { return generation.get(); }
+
+    /** 把 (namespace, name) 当前注册的实现记录为「内建默认」(引擎初始化时调用)。 */
+    public void markStaticDefault(String namespace, String name) {
+        ICallable current = getStaticFunction(namespace, name);
+        if (current != null) defaultStatics.put(namespace + "." + name, current);
+    }
+
+    /** (namespace, name) 当前注册的实现是否仍是内建默认(身份比较)。宿主覆盖注册后返回 false。 */
+    public boolean isDefaultStatic(String namespace, String name) {
+        ICallable current = getStaticFunction(namespace, name);
+        return current != null && current == defaultStatics.get(namespace + "." + name);
+    }
 
     public void registerStaticFunction(String namespace, String name, ICallable callable) {
         staticFunctions.computeIfAbsent(namespace, k -> new ConcurrentHashMap<>()).put(name, callable);
+        generation.incrementAndGet();
     }
 
     public void aliasNamespace(String existing, String alias) {
         Map<String, ICallable> ns = staticFunctions.get(existing);
         if (ns != null) staticFunctions.put(alias, ns);
+        generation.incrementAndGet();
     }
 
     public void registerStaticFunction(Class<?> clazz) {
@@ -94,14 +118,20 @@ public class CallableManager {
         for (int i = 1; i < namespaces.length; i++) {
             aliasNamespace(primary, namespaces[i]);
         }
+        generation.incrementAndGet();
     }
 
     public void registerConstructor(String name, IObjectConstructor<?> constructor) {
         constructors.put(name, constructor);
+        generation.incrementAndGet();
     }
 
     public void registerObjectFunction(Class<?> clazz, String name, ICallable callable) {
         objectFunctions.computeIfAbsent(clazz, k -> new ConcurrentHashMap<>()).put(name, callable);
+        // A4(jit-15)：重注册后失效——getObjectFunction 的命中缓存可能仍指向旧实现(含沿父类/接口
+        // 命中的条目)，无法按 key 精确清除，整体清空(注册是低频操作)。
+        objectFunctionCache.clear();
+        generation.incrementAndGet();
     }
 
     public void registerObjectFunction(Class<?> clazz) {
@@ -115,6 +145,8 @@ public class CallableManager {
             method.setAccessible(true);
             String functionName = ann.value();
             Method finalMethod = method;
+            objectFunctionCache.clear();          // A4(jit-15)：见单函数重载的说明
+            generation.incrementAndGet();
             objectFunctions.computeIfAbsent(targetClass, k -> new ConcurrentHashMap<>())
                 .put(functionName, data -> {
                     try {
@@ -281,5 +313,7 @@ public class CallableManager {
         constructors.clear();
         objectFunctions.clear();
         objectFunctionCache.clear();
+        defaultStatics.clear();
+        generation.incrementAndGet();
     }
 }

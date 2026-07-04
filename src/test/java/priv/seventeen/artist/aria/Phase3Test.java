@@ -166,7 +166,7 @@ public class Phase3Test {
     @Test
     void testJavaTypeFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.StringBuilder = use('java.lang.StringBuilder')
+            StringBuilder = use('java.lang.StringBuilder')
             return type.typeof(StringBuilder)
             """);
         assertEquals("object", result.stringValue());
@@ -175,8 +175,8 @@ public class Phase3Test {
     @Test
     void testJavaNewInstanceFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.StringBuilder = use('java.lang.StringBuilder')
-            val.sb = StringBuilder('hello')
+            StringBuilder = use('java.lang.StringBuilder')
+            sb = StringBuilder('hello')
             return sb.toString()
             """);
         assertEquals("hello", result.stringValue());
@@ -185,8 +185,8 @@ public class Phase3Test {
     @Test
     void testJavaMethodCallFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.StringBuilder = use('java.lang.StringBuilder')
-            val.sb = StringBuilder()
+            StringBuilder = use('java.lang.StringBuilder')
+            sb = StringBuilder()
             sb.append('hello')
             sb.append(' ')
             sb.append('world')
@@ -198,7 +198,7 @@ public class Phase3Test {
     @Test
     void testJavaStaticFieldFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.Math = use('java.lang.Math')
+            Math = use('java.lang.Math')
             return Math.PI
             """);
         assertEquals(Math.PI, result.numberValue(), 0.0001);
@@ -207,7 +207,7 @@ public class Phase3Test {
     @Test
     void testJavaStaticMethodFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.Math = use('java.lang.Math')
+            Math = use('java.lang.Math')
             return Math.abs(-42)
             """);
         assertEquals(42.0, result.numberValue());
@@ -217,9 +217,9 @@ public class Phase3Test {
     void testJavaFromListConversion() throws AriaException {
         // Java.to 将 Aria list 转为 Java List，Java.from 转回来
         IValue<?> result = eval("""
-            val.list = [10, 20, 30]
-            val.javaList = Java.to(list, 'java.util.List')
-            val.backToSL = Java.from(javaList)
+            list = [10, 20, 30]
+            javaList = Java.to(list, 'java.util.List')
+            backToSL = Java.from(javaList)
             return type.isList(backToSL)
             """);
         assertTrue(result.booleanValue());
@@ -228,8 +228,8 @@ public class Phase3Test {
     @Test
     void testJavaHashMapFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.HashMap = use('java.util.HashMap')
-            val.map = HashMap()
+            HashMap = use('java.util.HashMap')
+            map = HashMap()
             map.put('key', 'value')
             return map.get('key')
             """);
@@ -239,8 +239,8 @@ public class Phase3Test {
     @Test
     void testJavaArrayListFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.ArrayList = use('java.util.ArrayList')
-            val.list = ArrayList()
+            ArrayList = use('java.util.ArrayList')
+            list = ArrayList()
             list.add('a')
             list.add('b')
             list.add('c')
@@ -261,7 +261,7 @@ public class Phase3Test {
 
         IValue<?> result = Aria.eval("""
             var.obj = json.parse(global.jsonStr)
-            return obj.name
+            return var.obj.name
             """, ctx);
         // MapValue 的 GET_PROP 通过 dot 访问
         assertEquals("test", result.stringValue());
@@ -270,8 +270,8 @@ public class Phase3Test {
     @Test
     void testJsonStringifyFromScript() throws AriaException {
         IValue<?> result = eval("""
-            val.map = {'a': 1, 'b': 2}
-            val.str = json.stringify(map)
+            map = {'a': 1, 'b': 2}
+            str = json.stringify(map)
             return type.isString(str)
             """);
         assertTrue(result.booleanValue());
@@ -297,8 +297,8 @@ public class Phase3Test {
     void testJavaExtendFunctionalInterface() throws AriaException {
         // 测试 Java.extend 创建 Runnable 代理
         IValue<?> result = eval("""
-            val.Runnable = use('java.lang.Runnable')
-            val.r = Java.extend(Runnable, -> {
+            Runnable = use('java.lang.Runnable')
+            r = Java.extend(Runnable, -> {
                 return 42
             })
             r.run()
@@ -311,8 +311,8 @@ public class Phase3Test {
     void testJavaExtendComparator() throws AriaException {
         // 测试 Java.extend 创建 Comparator 代理
         IValue<?> result = eval("""
-            val.Comparator = use('java.util.Comparator')
-            val.cmp = Java.extend(Comparator, -> {
+            Comparator = use('java.util.Comparator')
+            cmp = Java.extend(Comparator, -> {
                 return args[0] - args[1]
             })
             return type.typeof(cmp)
@@ -325,7 +325,7 @@ public class Phase3Test {
     @Test
     void testStaticCompileRoundTrip() throws Exception {
         // 编译 → 写入 .aria → 读取 → 执行
-        String code = "var.x = 10\nvar.y = 20\nreturn x + y\n";
+        String code = "x = 10\ny = 20\nreturn x + y\n";
         var unit = Aria.compile("test", code);
         var program = unit.getProgram();
 

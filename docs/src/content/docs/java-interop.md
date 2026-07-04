@@ -13,9 +13,9 @@ Aria 运行在 JVM 上，提供了完整的 Java 互操作能力。通过 `use()
 ## use — 加载 Java 类
 
 ```aria
-val.HashMap = use('java.util.HashMap')
-val.Math = use('java.lang.Math')
-val.ArrayList = use('java.util.ArrayList')
+HashMap = use('java.util.HashMap')
+Math = use('java.lang.Math')
+ArrayList = use('java.util.ArrayList')
 ```
 
 加载后返回一个类镜像对象（JavaClassMirror），可以访问静态字段、静态方法，以及创建实例。
@@ -33,15 +33,15 @@ val.ArrayList = use('java.util.ArrayList')
 直接调用类名创建 Java 对象实例：
 
 ```aria
-val.StringBuilder = use('java.lang.StringBuilder')
-val.sb = StringBuilder('hello')
+StringBuilder = use('java.lang.StringBuilder')
+sb = StringBuilder('hello')
 sb.append(' world')
 println(sb.toString())  // "hello world"
 
-val.HashMap = use('java.util.HashMap')
-val.map = HashMap()
-map.put('key', 'value')
-println(map.get('key'))  // "value"
+HashMap = use('java.util.HashMap')
+m = HashMap()
+m.put('key', 'value')
+println(m.get('key'))  // "value"
 ```
 
 构造器支持重载解析，会根据参数数量和类型自动选择最佳匹配。
@@ -51,7 +51,7 @@ println(map.get('key'))  // "value"
 ## 静态字段和静态方法
 
 ```aria
-val.Math = use('java.lang.Math')
+Math = use('java.lang.Math')
 
 // 静态字段
 println(Math.PI)       // 3.141592653589793
@@ -66,8 +66,8 @@ println(Math.max(3, 7)) // 7.0
 ## 实例方法调用
 
 ```aria
-val.ArrayList = use('java.util.ArrayList')
-val.list = ArrayList()
+ArrayList = use('java.util.ArrayList')
+list = ArrayList()
 list.add('a')
 list.add('b')
 list.add('c')
@@ -87,8 +87,8 @@ println(list.get(1))  // "b"
 对于符合 JavaBean 规范的对象，可以直接通过属性名访问 getter：
 
 ```aria
-val.Date = use('java.util.Date')
-val.d = Date(0)
+Date = use('java.util.Date')
+d = Date(0)
 println(d.time)  // 0.0 — 等价于 d.getTime()
 ```
 
@@ -101,28 +101,25 @@ println(d.time)  // 0.0 — 等价于 d.getTime()
 公共实例字段和静态字段可以直接通过名称访问：
 
 ```aria
-val.Math = use('java.lang.Math')
+Math = use('java.lang.Math')
 println(Math.PI)  // 静态字段
 ```
 
 ---
 
-## List/Map 下标访问
+## Map 下标访问
 
-Java 的 List 和 Map 对象支持下标访问：
+Java 的 Map 对象支持下标读取：
 
 ```aria
-val.ArrayList = use('java.util.ArrayList')
-val.list = ArrayList()
-list.add('x')
-list.add('y')
-// list[0] 等价于 list.get(0)
-
-val.HashMap = use('java.util.HashMap')
-val.map = HashMap()
-map.put('key', 'value')
-// map['key'] 等价于 map.get('key')
+HashMap = use('java.util.HashMap')
+m = HashMap()
+m.put('key', 'value')
+println(m['key'])   // "value" — 等价于 m.get('key')
 ```
+
+> Java **List** 对象请使用 `list.get(i)` 读取元素（下标读取 `list[i]` 对 Java List
+> 不生效，返回 `none`）。Aria 原生列表不受影响。
 
 ---
 
@@ -131,14 +128,14 @@ map.put('key', 'value')
 将 Java 集合/数组转换为 Aria 原生值：
 
 ```aria
-val.ArrayList = use('java.util.ArrayList')
-val.javaList = ArrayList()
+ArrayList = use('java.util.ArrayList')
+javaList = ArrayList()
 javaList.add(1)
 javaList.add(2)
 javaList.add(3)
 
-val.ariaList = Java.from(javaList)  // 转为 Aria ListValue
-println(type.isList(ariaList))      // true
+ariaList = Java.from(javaList)  // 转为 Aria ListValue
+println(type.isList(ariaList))  // true
 ```
 
 转换规则：
@@ -154,11 +151,11 @@ println(type.isList(ariaList))      // true
 将 Aria 值转换为 Java 集合对象：
 
 ```aria
-val.list = [10, 20, 30]
-val.javaList = Java.to(list)  // 转为 Java ArrayList（包装为 JavaObjectMirror）
+list = [10, 20, 30]
+javaList = Java.to(list)  // 转为 Java ArrayList（包装为 JavaObjectMirror）
 
-val.map = {"a": 1, "b": 2}
-val.javaMap = Java.to(map)    // 转为 Java LinkedHashMap
+m = {"a": 1, "b": 2}
+javaMap = Java.to(m)      // 转为 Java LinkedHashMap
 ```
 
 ---
@@ -172,14 +169,14 @@ val.javaMap = Java.to(map)    // 转为 Java LinkedHashMap
 如果接口只有一个抽象方法，可以直接传入函数：
 
 ```aria
-val.Runnable = use('java.lang.Runnable')
-val.r = Java.extend(Runnable, -> {
+Runnable = use('java.lang.Runnable')
+r = Java.extend(Runnable, -> {
     println("running!")
 })
 r.run()  // "running!"
 
-val.Comparator = use('java.util.Comparator')
-val.cmp = Java.extend(Comparator, -> {
+Comparator = use('java.util.Comparator')
+cmp = Java.extend(Comparator, -> {
     return args[0] - args[1]
 })
 ```
@@ -189,8 +186,8 @@ val.cmp = Java.extend(Comparator, -> {
 使用 Map 为每个方法提供实现：
 
 ```aria
-val.MyInterface = use('com.example.MyInterface')
-val.impl = Java.extend(MyInterface, {
+MyInterface = use('com.example.MyInterface')
+impl = Java.extend(MyInterface, {
     "methodA": -> {
         return "hello"
     },
@@ -209,7 +206,7 @@ val.impl = Java.extend(MyInterface, {
 返回对象自身。super 调用的实际语义由类系统处理，此方法主要用于兼容性。
 
 ```aria
-val.obj = MyClass()
+obj = MyClass()
 Java.super(obj)  // 返回 obj 自身
 ```
 
@@ -284,7 +281,7 @@ manager.registerConstructor("MyObj", data -> {
 脚本中调用：
 
 ```aria
-val.obj = MyObj(10, 20)
+obj = MyObj(10, 20)
 ```
 
 ### registerObjectFunction — 注册对象方法
@@ -301,7 +298,7 @@ manager.registerObjectFunction(StringValue.class, "repeat", data -> {
 脚本中调用：
 
 ```aria
-val.s = "ha".repeat(3)  // "hahaha"
+s = "ha".repeat(3)  // "hahaha"
 ```
 
 对象方法查找支持继承链：先查当前类，再查父类和接口。
@@ -377,8 +374,8 @@ public class Point implements IAriaObject {
 注册后在脚本中使用：
 
 ```aria
-val.p1 = Point(0, 0)
-val.p2 = Point(3, 4)
+p1 = Point(0, 0)
+p2 = Point(3, 4)
 println(p1.distance(p2))  // 5.0
 println(p2.getX())        // 3.0
 ```
@@ -428,7 +425,7 @@ println(math.multiply(3, 4))  // 12.0
 规则：
 - `@AriaNamespace` 标注在类上，`value` 是命名空间名数组，第一个为主名，其余为别名
 - `@AriaInvokeHandler` 标注在 `public static` 方法上，参数必须是 `InvocationData`
-- 返回值自动包装：`IValue` 直接返回，`Double`/`Number` → `NumberValue`，`String` → `StringValue`，`Boolean` → `BooleanValue`，`List` → `ListValue`，`Map` → `MapValue`，`IAriaObject` → `ObjectValue`，其它对象 → `StoreOnlyValue`（仍可作为对象继续调用方法），`null` → `NoneValue`
+- 返回值自动包装：`IValue` 直接返回，`Double`/`Number` → `NumberValue`，`String`/`Character` → `StringValue`，`Boolean` → `BooleanValue`，`List` → `ListValue`（元素递归包装），`Map` → `MapValue`（键值递归包装），`IAriaObject` → `ObjectValue`，其它对象 → `StoreOnlyValue`（仍可作为对象继续调用方法），`null` → `NoneValue`
 - 内部使用 `MethodHandle` 调用，性能接近直接方法调用
 
 ### aliasNamespace — 命名空间别名
@@ -474,11 +471,11 @@ public class JavaInteropExample {
         // 3. 执行脚本
         Context ctx = Aria.createContext();
         IValue<?> result = Aria.eval("""
-            val.HashMap = use('java.util.HashMap')
-            val.map = HashMap()
-            map.put('version', app.version())
-            map.put('sum', app.add(10, 20))
-            return Java.from(map)
+            HashMap = use('java.util.HashMap')
+            m = HashMap()
+            m.put('version', app.version())
+            m.put('sum', app.add(10, 20))
+            return Java.from(m)
             """, ctx);
 
         System.out.println(result);

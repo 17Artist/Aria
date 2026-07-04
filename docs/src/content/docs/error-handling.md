@@ -8,6 +8,37 @@ order: 8
 
 Aria 提供 `try` / `catch` / `finally` 结构来处理运行时异常，以及 `throw` 语句来主动抛出异常。
 
+## 运行时错误消息格式
+
+未被脚本捕获的运行时错误抛给宿主时，消息带有**编译单元名、行号与出错源码行**：
+
+```
+单元: [脚本名] 运行时错误, 位于第 X 行, 到第 X 行
+请检查: <出错的源码行>
+错误信息: <具体原因> (line X:Y)
+```
+
+例如执行 `return [1,2][5]`：
+
+```
+单元: [eval] 运行时错误, 位于第 1 行, 到第 1 行
+请检查: return [1,2][5]
+错误信息: 列表索引越界: 5 (size=2) (line 1:8)
+```
+
+常见运行时错误：
+
+| 场景                             | 错误信息                          |
+|--------------------------------|-------------------------------|
+| 下标读取列表越界（`l[5]`）               | `列表索引越界: 5 (size=2)`          |
+| 调用命名空间中不存在的函数（`math.nope(1)`）  | `点运算解析工具集函数不存在: math.nope`    |
+| 对不可调用的值带参调用（`x = 5` 后 `x(1)`）  | `不支持的后缀运算`                    |
+| 非法操作数组合（`1 + [1]` 等）           | `number 类型不支持与 list 类型进行加法运算` |
+| 对非数字字符串取负（`-x`，x 为 `'abc'`）    | `字符串内容非数字: ... 无法转换为数字进行运算`   |
+
+> 注意几类**不报错**的情形：读取未定义裸名 → `none`；`args` 越界 → `none`；
+> 除以 0 → `0.0`；对非函数值加**空**括号 → 返回值本身；`list.get()` 上越界 → `none`。
+
 ## try / catch / finally
 
 基本语法：
@@ -70,7 +101,7 @@ throw 'Invalid argument: ' + arg
 
 ```aria
 try {
-    var.file = openFile('data.txt')
+    file = openFile('data.txt')
     processFile(file)
 } finally {
     closeFile(file)
@@ -102,7 +133,7 @@ try {
 将可能出错的代码放在 `try` 块中，保持 `try` 块尽量小：
 
 ```aria
-var.data = none
+data = none
 try {
     data = parseInput(rawInput)
 } catch (e) {
@@ -114,7 +145,7 @@ try {
 使用 `finally` 确保资源清理：
 
 ```aria
-var.connection = none
+connection = none
 try {
     connection = connect(host, port)
     connection.send(data)
@@ -136,3 +167,12 @@ try {
     throw 'Failed to process data: ' + e
 }
 ```
+
+## 编译错误与 lenient 模式
+
+默认（严格）模式下任何**解析错误**都会在编译时立即抛出 `CompileException`（fail-fast），
+坏语句不会被静默丢弃。
+
+宿主可以用 **lenient 编译模式**（`Aria.compile(name, ctx, code, true)`）恢复
+Shimmer 式的宽容行为：解析出错的语句**及其后所有内容**被丢弃，保留前缀程序继续执行，
+错误记录为警告（`getWarnings()`）。详见 [JVM 嵌入指南](embedding)。

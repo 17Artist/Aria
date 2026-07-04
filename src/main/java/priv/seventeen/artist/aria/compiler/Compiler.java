@@ -44,14 +44,32 @@ public class Compiler {
     private int registerCounter = 0;
     private int labelCounter = 0;
 
-    private final Map<String, Integer> registerAliases = new HashMap<>();
+
+    private final Set<String> importAliases = new HashSet<>();
+
+    private Compiler forSubProgram() {
+        Compiler sub = new Compiler();
+        sub.importAliases.addAll(this.importAliases);
+        return sub;
+    }
 
 
+    private static final class LoopFrame {
+        static final int FOR = 0;
+        static final int WHILE = 1;
+        static final int SWITCH = 2;
 
-    private final Deque<int[]> loopTargetStack = new ArrayDeque<>();
+        final int type;
+        final List<Integer> breakJumps = new ArrayList<>();  // break 占位 JUMP 的指令位置，帧关闭时 patchJump 回填到消耗点
+        final List<Integer> nextJumps = new ArrayList<>();   // next 占位 JUMP 的指令位置（FOR 帧），帧关闭时回填到 continue 点
+        int whileCondStart = -1;    // WHILE：条件检查起始 PC（next 回跳目标）
+        int whileLeakFlagReg = -1;  // WHILE：尾部 next 泄漏标志寄存器
+        boolean whileLeakUsed = false; // WHILE：体内是否出现过指向本帧的 next（含内层 while 泄漏链）
 
-    private final List<Integer> pendingBreaks = new ArrayList<>();
-    private final List<Integer> pendingNexts = new ArrayList<>();
+        LoopFrame(int type) { this.type = type; }
+    }
+
+    private final Deque<LoopFrame> loopFrames = new ArrayDeque<>();
 
 
     public IRProgram compile(String name, ASTNode root) {
@@ -61,22 +79,16 @@ public class Compiler {
         constants.clear();
         variableKeys.clear();
         subPrograms.clear();
+        loopFrames.clear();
         registerCounter = 0;
         labelCounter = 0;
 
-        compileNode(root, -1);
-        // 隐式返回：顶层程序末尾若非 RETURN，补一条返回最后求值结果（与 compileLambda 的隐式返回一致）。
-        // 使裸表达式脚本（如 "10 + 5"、"screen.width / 2"）返回其值而非 none —— Shimmer 兼容、Ruby/Kotlin 式末表达式返回。
+        // Shimmer 对齐(controlflow-08)：隐式返回按 BlockStatement"末语句结果值"语义——
+        // 末语句为 if/else 时两分支值汇入统一寄存器、while 为末次循环体值(0 次为 none)、
+        // for-in/switch/语句形 async(async-6) 为 none、直线表达式为其值。
+        int resultReg = compileStatementValue(root);
         if (!instructions.isEmpty() && instructions.get(instructions.size() - 1).opcode != IROpCode.RETURN) {
-            int lastDst = -1;
-            for (int i = instructions.size() - 1; i >= 0; i--) {
-                IROpCode op = instructions.get(i).opcode;
-                if (op != IROpCode.NOP && op != IROpCode.POP_SCOPE && op != IROpCode.PUSH_SCOPE) {
-                    lastDst = instructions.get(i).dst;
-                    break;
-                }
-            }
-            emit(IRInstruction.of(IROpCode.RETURN, lastDst));
+            emit(IRInstruction.of(IROpCode.RETURN, resultReg));
         }
         IRProgram program = new IRProgram(name);
         program.setInstructions(instructions.toArray(new IRInstruction[0]));
@@ -241,15 +253,13 @@ public class Compiler {
             case "false" -> emit(IRInstruction.of(IROpCode.LOAD_FALSE, dst), expr.getLocation());
             case "none" -> emit(IRInstruction.of(IROpCode.LOAD_NONE, dst), expr.getLocation());
             default -> {
-                // 检查 for-in 循环变量的寄存器别名
-                Integer aliasReg = registerAliases.get(name);
-                if (aliasReg != null) {
-                    // 直接返回别名寄存器，避免 MOVE
-                    return aliasReg;
-                } else {
-                    int ki = addVariableKey(name);
-                    emit(IRInstruction.of(IROpCode.LOAD_SCOPE, dst, ki), expr.getLocation());
-                }
+                // Shimmer 对齐(controlflow-11)：for-in 循环变量已改真实 scope 存储，
+                // 寄存器别名机制(registerAliases)废弃——裸名一律 LOAD_SCOPE。
+                // 例外：import 别名(文件级词法绑定,存 var 存储)编译为 LOAD_VAR——
+                // lambda 体隔离(R2)后仍可在嵌套体内引用同文件 import 的符号。
+                int ki = addVariableKey(name);
+                emit(IRInstruction.of(importAliases.contains(name) ? IROpCode.LOAD_VAR : IROpCode.LOAD_SCOPE,
+                        dst, ki), expr.getLocation());
             }
         }
         return dst;
@@ -484,9 +494,22 @@ public class Compiler {
                 subPrograms.get(subPrograms.size() - 1).setName(dot.getProperty());
             }
         }
+        // Shimmer 对齐(R2 系, Assignment.getResult)：`x = f` / `x = var.f` 等"RHS 为裸变量读"
+        // 的简单赋值——若读到可调用值则零参自动调用后再存(Shimmer 中具名 lambda 不作为一等值
+        // 流动,实测 X13/Y06/Y20/cases3#7)。lambda 字面量 RHS 不发射(直接存函数)；其余 RHS 形态
+        // (调用结果/字面量/运算)保持 Aria 一等函数值语义(自由区超集)。
+        if (isBareVariableRead(expr.getValue())) {
+            emit(IRInstruction.of(IROpCode.AUTO_INVOKE, valueReg), expr.getLocation());
+        }
         emitStore(target, valueReg, expr.getLocation());
         // 返回 valueReg 作为表达式结果，避免多余 MOVE
         return valueReg;
+    }
+
+    /** RHS 是否为"裸变量读"：标识符(scope 读)或 var./val./global./server./client. 命名空间点读。 */
+    private boolean isBareVariableRead(ASTNode node) {
+        if (node instanceof IdentifierExpr) return true;
+        return node instanceof DotExpr dot && isDotNamespace(dot);
     }
 
     /** 检查节点是否为 DotExpr(Identifier(ns), prop) */
@@ -635,8 +658,8 @@ public class Compiler {
     }
 
     private int compileIndex(IndexExpr expr, int dst) {
-        if (expr.getObject() instanceof IdentifierExpr id && "args".equals(id.getName())
-                && expr.getIndex() instanceof LiteralExpr lit && lit.getValue() instanceof NumberValue nv) {
+        boolean argsAccess = expr.getObject() instanceof IdentifierExpr aid && "args".equals(aid.getName());
+        if (argsAccess && expr.getIndex() instanceof LiteralExpr lit && lit.getValue() instanceof NumberValue nv) {
             int argIdx = (int) nv.numberValue();
             emit(IRInstruction.of(IROpCode.LOAD_ARG, dst, argIdx), expr.getLocation());
             return dst;
@@ -645,7 +668,11 @@ public class Compiler {
         int objReg = compileNode(expr.getObject(), -1);
         if (expr.getIndex() != null) {
             int idxReg = compileNode(expr.getIndex(), -1);
-            emit(IRInstruction.of(IROpCode.GET_INDEX, dst, objReg, idxReg), expr.getLocation());
+            IRInstruction gi = IRInstruction.of(IROpCode.GET_INDEX, dst, objReg, idxReg);
+            // Shimmer 对齐(controlflow-07, ArgsDot)：args[动态下标] 越界返回 none 而非抛
+            // "列表索引越界"——c=2 标记 args 索引模式(与 LOAD_ARG 常量形一致)。
+            if (argsAccess) gi.withC(2);
+            emit(gi, expr.getLocation());
         } else {
             emit(IRInstruction.of(IROpCode.GET_INDEX, dst, objReg, -1), expr.getLocation());
         }
@@ -654,7 +681,7 @@ public class Compiler {
 
     private int compileLambda(LambdaExpr expr, int dst) {
         // 编译函数体为子程序
-        Compiler subCompiler = new Compiler();
+        Compiler subCompiler = forSubProgram();
         IRProgram subProg = subCompiler.compile("<lambda>", expr.getBody());
 
         // 隐式返回：如果最后一条指令不是 RETURN，插入 RETURN
@@ -770,21 +797,29 @@ public class Compiler {
     }
 
     private int compileInterpolatedString(InterpolatedStringExpr expr, int dst) {
+        // Shimmer 对齐(syntax-01)：CONCAT 按 baseReg..baseReg+n-1 连续窗口取段。先预分配
+        // 整个窗口，再把每段编译到自由寄存器后显式 MOVE 进窗口——嵌入表达式(BinaryExpr/
+        // IndexExpr/DotExpr 等)的中间操作数寄存器不再混进窗口挤掉真实段。
         List<Object> parts = expr.getParts();
+        int n = parts.size();
         int baseReg = registerCounter;
-        int count = 0;
-        for (Object part : parts) {
+        int[] window = new int[n];
+        for (int i = 0; i < n; i++) {
+            window[i] = nextRegister();
+        }
+        for (int i = 0; i < n; i++) {
+            Object part = parts.get(i);
             if (part instanceof String s) {
-                int r = nextRegister();
                 int ci = addConstant(new StringValue(s));
-                emit(IRInstruction.of(IROpCode.LOAD_CONST, r, ci), expr.getLocation());
-                count++;
+                emit(IRInstruction.of(IROpCode.LOAD_CONST, window[i], ci), expr.getLocation());
             } else if (part instanceof ASTNode node) {
-                compileNode(node, -1);
-                count++;
+                int r = compileNode(node, -1);
+                if (r != window[i]) {
+                    emit(IRInstruction.of(IROpCode.MOVE, window[i], r), expr.getLocation());
+                }
             }
         }
-        emit(IRInstruction.of(IROpCode.CONCAT, dst, baseReg, count), expr.getLocation());
+        emit(IRInstruction.of(IROpCode.CONCAT, dst, baseReg, n), expr.getLocation());
         return dst;
     }
 
@@ -851,7 +886,166 @@ public class Compiler {
     }
 
     private void compileExpressionStmt(ExpressionStmt stmt, int dst) {
-        compileNode(stmt.getExpression(), dst);
+        int reg = compileNode(stmt.getExpression(), dst);
+        // Shimmer 对齐(R2 系, Expression.needCall)：裸变量读作为独立语句(如语句 `f`)——
+        // 值可调用则零参自动调用(副作用发生,语句值=调用结果),与赋值 RHS 同一受限节点集。
+        if (isBareVariableRead(stmt.getExpression())) {
+            emit(IRInstruction.of(IROpCode.AUTO_INVOKE, reg), stmt.getLocation());
+        }
+    }
+
+    // ==================== Shimmer 块结果值语义(controlflow-08) ====================
+
+    /**
+     * 按 Shimmer BlockStatement"末语句结果值"语义编译语句，返回持有该语句结果值的寄存器；
+     * {@code -1} 表示 none。仅用于顶层程序/lambda/async 体的末语句链（含递归的 if 分支、
+     * while 体、嵌套块）。
+     * <ul>
+     *   <li>if/else：被选中分支块的结果（无分支命中 → none），递归汇入统一寄存器。</li>
+     *   <li>while：末次循环体的结果（0 次执行 → none）。</li>
+     *   <li>for-in / 经典 for / switch（源码 line 61 恒 Result.NONE）/ 语句形 async（async-6，
+     *       AsyncStatement 恒 Result.NONE）→ none。</li>
+     *   <li>表达式语句：其值寄存器。</li>
+     * </ul>
+     */
+    private int compileStatementValue(ASTNode node) {
+        if (node == null) return -1;
+        if (node instanceof BlockStmt block) {
+            return compileBlockValue(block);
+        }
+        if (node instanceof ExpressionStmt es) {
+            int r = compileNode(es.getExpression(), -1);
+            // Shimmer 对齐(R2 系, Expression.needCall)：末语句裸变量读同样自动调用(与 compileExpressionStmt 一致)
+            if (isBareVariableRead(es.getExpression())) {
+                emit(IRInstruction.of(IROpCode.AUTO_INVOKE, r), es.getLocation());
+            }
+            return r;
+        }
+        if (node instanceof IfStmt ifs) {
+            return compileIfValue(ifs);
+        }
+        if (node instanceof WhileStmt ws) {
+            int resultReg = nextRegister();
+            compileWhileValue(ws, resultReg);
+            return resultReg;
+        }
+        if (node instanceof ForInStmt || node instanceof ForStmt || node instanceof SwitchStmt
+                || node instanceof AsyncStmt || node instanceof ImportStmt || node instanceof ExportStmt
+                || node instanceof ClassDeclStmt || node instanceof DestructureStmt
+                || node instanceof TryCatchStmt || node instanceof ReturnStmt) {
+            compileNode(node, -1);
+            return -1;
+        }
+        // 裸表达式节点（root 可能不是语句包装）
+        return compileNode(node, -1);
+    }
+
+    /** 与 {@link #compileBlock} 同构，但末语句按 Shimmer 块结果值语义编译（controlflow-08）。 */
+    private int compileBlockValue(BlockStmt stmt) {
+        int pushPC = currentPC();
+        emit(IRInstruction.of(IROpCode.PUSH_SCOPE), stmt.getLocation());
+        int beforeCount = instructions.size();
+
+        List<ASTNode> children = stmt.getStatements();
+        int resultReg = -1;
+        for (int i = 0; i < children.size(); i++) {
+            if (i == children.size() - 1) {
+                resultReg = compileStatementValue(children.get(i));
+            } else {
+                compileNode(children.get(i), -1);
+            }
+        }
+
+        boolean usedScope = false;
+        for (int i = beforeCount; i < instructions.size(); i++) {
+            IROpCode op = instructions.get(i).opcode;
+            if (op == IROpCode.LOAD_SCOPE || op == IROpCode.STORE_SCOPE) {
+                usedScope = true;
+                break;
+            }
+        }
+        if (usedScope) {
+            emit(IRInstruction.of(IROpCode.POP_SCOPE), stmt.getLocation());
+        } else {
+            instructions.set(pushPC, IRInstruction.of(IROpCode.NOP));
+        }
+        return resultReg;
+    }
+
+    /**
+     * 值语义 if/elif/else（controlflow-08）：所有分支块结果 MOVE 汇入统一结果寄存器；
+     * 无分支命中（含无 else）时为 none（对齐 Shimmer IfStatement 落空返回 Result.NONE）。
+     */
+    private int compileIfValue(IfStmt stmt) {
+        int resultReg = nextRegister();
+        emit(IRInstruction.of(IROpCode.LOAD_NONE, resultReg), stmt.getLocation());
+
+        int condReg = compileNode(stmt.getCondition(), -1);
+        int falseJump = currentPC();
+        emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, condReg, 0), stmt.getLocation());
+
+        int thenVal = compileStatementValue(stmt.getThenBlock());
+        if (thenVal >= 0) {
+            emit(IRInstruction.of(IROpCode.MOVE, resultReg, thenVal), stmt.getLocation());
+        }
+        List<Integer> endJumps = new ArrayList<>();
+        endJumps.add(currentPC());
+        emit(IRInstruction.of(IROpCode.JUMP, 0), stmt.getLocation());
+
+        patchJump(falseJump, currentPC());
+        if (stmt.getElifBlocks() != null) {
+            for (IfStmt elif : stmt.getElifBlocks()) {
+                int elifCondReg = compileNode(elif.getCondition(), -1);
+                int elifFalseJump = currentPC();
+                emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, elifCondReg, 0), elif.getLocation());
+
+                int elifVal = compileStatementValue(elif.getThenBlock());
+                if (elifVal >= 0) {
+                    emit(IRInstruction.of(IROpCode.MOVE, resultReg, elifVal), elif.getLocation());
+                }
+                endJumps.add(currentPC());
+                emit(IRInstruction.of(IROpCode.JUMP, 0), elif.getLocation());
+
+                patchJump(elifFalseJump, currentPC());
+            }
+        }
+        if (stmt.getElseBlock() != null) {
+            int elseVal = compileStatementValue(stmt.getElseBlock());
+            if (elseVal >= 0) {
+                emit(IRInstruction.of(IROpCode.MOVE, resultReg, elseVal), stmt.getLocation());
+            }
+        }
+
+        int endPC = currentPC();
+        for (int jumpPC : endJumps) {
+            patchJump(jumpPC, endPC);
+        }
+        return resultReg;
+    }
+
+    // ==================== break/next 泄漏语义(syntax-06/controlflow-04/05) ====================
+
+    /**
+     * 发射一次 NEXT 控制流传播（Shimmer 对齐）：从 {@code frames}（内→外）找第一个非 SWITCH 帧——
+     * FOR → 跳其 continue 点；WHILE → 置其泄漏标志并回跳其条件检查（continue，泄漏由该帧
+     * 出口检查续传）；全部穿透（仅 SWITCH/空栈）→ RETURN none（脚本优雅终止）。
+     */
+    private void emitNextPropagation(Iterator<LoopFrame> frames, SourceLocation loc) {
+        while (frames.hasNext()) {
+            LoopFrame f = frames.next();
+            if (f.type == LoopFrame.SWITCH) continue; // switch 不消耗 NEXT(源码 line 43 上抛)
+            if (f.type == LoopFrame.FOR) {
+                f.nextJumps.add(currentPC());
+                emit(IRInstruction.of(IROpCode.JUMP, 0, 0), loc);
+                return;
+            }
+            // WHILE：consume 为 continue；若随后条件为假退出，泄漏标志使 NEXT 继续外传
+            f.whileLeakUsed = true;
+            emit(IRInstruction.of(IROpCode.LOAD_TRUE, f.whileLeakFlagReg), loc);
+            emit(IRInstruction.of(IROpCode.JUMP, 0, f.whileCondStart), loc);
+            return;
+        }
+        emit(IRInstruction.of(IROpCode.RETURN, -1), loc);
     }
 
     private void compileIf(IfStmt stmt) {
@@ -896,32 +1090,64 @@ public class Compiler {
     }
 
     private void compileWhile(WhileStmt stmt) {
+        compileWhileValue(stmt, -1);
+    }
+
+    /**
+     * Shimmer 对齐(syntax-06/controlflow-04/05)的 while 编译：
+     * <ul>
+     *   <li>体内 break 不指向本循环——由 {@link #compileReturn} 跳到最近外层 FOR/SWITCH 的
+     *       消耗点，无消耗者则 RETURN none（BREAK 泄漏语义）。</li>
+     *   <li>体内 next：置泄漏标志后回跳条件检查；体正常完成一轮清标志。循环因条件为假退出时
+     *       检查标志——为真则把 NEXT 继续向外层传播（对齐 WhileStatement 末轮 next 后
+     *       {@code return result} 残留 NEXT 型 Result 的泄漏）。</li>
+     *   <li>{@code resultReg >= 0} 时（controlflow-08 值语义）：每轮体结果 MOVE 入
+     *       resultReg，0 次执行为 none。</li>
+     * </ul>
+     */
+    private void compileWhileValue(WhileStmt stmt, int resultReg) {
+        LoopFrame frame = new LoopFrame(LoopFrame.WHILE);
+        frame.whileLeakFlagReg = nextRegister();
+        emit(IRInstruction.of(IROpCode.LOAD_FALSE, frame.whileLeakFlagReg), stmt.getLocation());
+        if (resultReg >= 0) {
+            emit(IRInstruction.of(IROpCode.LOAD_NONE, resultReg), stmt.getLocation());
+        }
+
         int loopStart = currentPC();
+        frame.whileCondStart = loopStart;
         int condReg = compileNode(stmt.getCondition(), -1);
         int exitJump = currentPC();
         emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, condReg, 0), stmt.getLocation());
 
-        // 保存外层 break/next 列表，创建本层
-        List<Integer> outerBreaks = new ArrayList<>(pendingBreaks);
-        List<Integer> outerNexts = new ArrayList<>(pendingNexts);
-        pendingBreaks.clear();
-        pendingNexts.clear();
+        loopFrames.push(frame);
+        if (resultReg >= 0) {
+            int bodyVal = compileStatementValue(stmt.getBody());
+            if (bodyVal >= 0) {
+                emit(IRInstruction.of(IROpCode.MOVE, resultReg, bodyVal), stmt.getLocation());
+            } else {
+                emit(IRInstruction.of(IROpCode.LOAD_NONE, resultReg), stmt.getLocation());
+            }
+        } else {
+            compileNode(stmt.getBody(), -1);
+        }
+        loopFrames.pop();
 
-        compileNode(stmt.getBody(), -1);
+        if (frame.whileLeakUsed) {
+            // 体正常完成一轮：清泄漏标志再回条件
+            emit(IRInstruction.of(IROpCode.LOAD_FALSE, frame.whileLeakFlagReg), stmt.getLocation());
+            emit(IRInstruction.of(IROpCode.JUMP, 0, loopStart), stmt.getLocation());
 
-        int continueTarget = currentPC(); // next 跳转到这里（重新检查条件）
-        emit(IRInstruction.of(IROpCode.JUMP, 0, loopStart), stmt.getLocation());
-
-        int breakTarget = currentPC(); // break 跳转到这里（循环出口）
-        patchJump(exitJump, breakTarget);
-
-        // 修补本层 break/next
-        for (int pc : pendingBreaks) patchJump(pc, breakTarget);
-        for (int pc : pendingNexts) patchJump(pc, continueTarget);
-
-        // 恢复外层
-        pendingBreaks.clear(); pendingBreaks.addAll(outerBreaks);
-        pendingNexts.clear(); pendingNexts.addAll(outerNexts);
+            // 条件为假出口：检查残留 NEXT 泄漏
+            patchJump(exitJump, currentPC());
+            int noLeakJump = currentPC();
+            emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, frame.whileLeakFlagReg, 0), stmt.getLocation());
+            emitNextPropagation(loopFrames.iterator(), stmt.getLocation());
+            patchJump(noLeakJump, currentPC());
+        } else {
+            emit(IRInstruction.of(IROpCode.JUMP, 0, loopStart), stmt.getLocation());
+            patchJump(exitJump, currentPC());
+        }
+        // 注：break 从不指向 while 自身(泄漏语义)，frame.breakJumps/nextJumps 恒为空。
     }
 
     private void compileForIn(ForInStmt stmt) {
@@ -931,8 +1157,9 @@ public class Compiler {
         List<String> vars = stmt.getVariables();
         boolean singleVar = (vars.size() == 1);
 
-        // 单变量 for-in 优化：不用 PUSH_SCOPE/STORE_SCOPE/LOAD_SCOPE/POP_SCOPE
-        // 循环变量直接用寄存器，通过 registerAliases 让循环体中的引用直接用寄存器
+        // Shimmer 对齐(controlflow-11)：单变量循环变量不再用寄存器别名(registerAliases)——
+        // 改为每轮 STORE_SCOPE 写真实作用域：循环后可见=末次迭代值、覆盖同名外层变量，
+        // 且体内读(LOAD_SCOPE)写(STORE_SCOPE)同一绑定(别名方案读寄存器写 scope 不一致)。
         if (!singleVar) {
             emit(IRInstruction.of(IROpCode.PUSH_SCOPE), stmt.getLocation());
         }
@@ -947,44 +1174,41 @@ public class Compiler {
         emit(IRInstruction.of(IROpCode.LOAD_CONST, counterReg, zeroConst), stmt.getLocation());
 
         // 第一次取元素（c=1 标记迭代模式:Map 返回第 i 个 [key,value] 对而非按键查找,
-        // 使 for-in 能遍历 Map;List/Range/String 忽略 c,行为不变,不影响 map[key] 普通索引）
+        // 使 for-in 能遍历 Map;迭代终结返回 ITER_END 哨兵而非 none——含 none 元素的列表可完整遍历）
         emit(IRInstruction.of(IROpCode.GET_INDEX, iterVarReg, iterReg, counterReg).withC(1), stmt.getLocation());
 
         int loopStart = currentPC();
 
-        // 如果为 none 则退出
+        // 迭代终结则退出(c=1：只认 ITER_END 哨兵,Shimmer 对齐 controlflow-09)
         int exitJump = currentPC();
-        emit(IRInstruction.of(IROpCode.JUMP_IF_NONE, iterVarReg, 0), stmt.getLocation());
+        emit(IRInstruction.of(IROpCode.JUMP_IF_NONE, iterVarReg, 0).withC(1), stmt.getLocation());
 
         if (singleVar) {
-            // 单变量：注册寄存器别名，循环体中直接用寄存器
-            registerAliases.put(vars.get(0), iterVarReg);
+            // 单变量：每轮把元素写入真实作用域绑定(controlflow-11)
+            int ki = addVariableKey(vars.get(0));
+            emit(IRInstruction.of(IROpCode.STORE_SCOPE, iterVarReg, ki), stmt.getLocation());
         } else {
-            // 多变量解构：仍用 scope
+            // 多变量解构：仍用 scope。GET_INDEX c=2：解构缺位(如 map 遍历的第 3 个变量)→ none
+            // 而非抛"列表索引越界"(Shimmer 对齐 controlflow-10(b))。
             for (int i = 0; i < vars.size(); i++) {
                 int ki = addVariableKey(vars.get(i));
                 int partReg = nextRegister();
                 int idxConst = addConstant(new NumberValue(i));
                 int idxReg = nextRegister();
                 emit(IRInstruction.of(IROpCode.LOAD_CONST, idxReg, idxConst), stmt.getLocation());
-                emit(IRInstruction.of(IROpCode.GET_INDEX, partReg, iterVarReg, idxReg), stmt.getLocation());
+                emit(IRInstruction.of(IROpCode.GET_INDEX, partReg, iterVarReg, idxReg).withC(2), stmt.getLocation());
                 emit(IRInstruction.of(IROpCode.STORE_SCOPE, partReg, ki), stmt.getLocation());
             }
         }
 
-        // 保存外层 break/next
-        List<Integer> outerBreaks = new ArrayList<>(pendingBreaks);
-        List<Integer> outerNexts = new ArrayList<>(pendingNexts);
-        pendingBreaks.clear();
-        pendingNexts.clear();
+        // FOR 帧：完整消耗 break/next(Shimmer ForInStatement 语义,syntax-06)
+        LoopFrame frame = new LoopFrame(LoopFrame.FOR);
+        loopFrames.push(frame);
 
         // 循环体
         compileNode(stmt.getBody(), -1);
 
-        // 移除寄存器别名
-        if (singleVar) {
-            registerAliases.remove(vars.get(0));
-        }
+        loopFrames.pop();
 
         // next 跳转到这里（递增计数器 + 下一次迭代）
         int continueTarget = currentPC();
@@ -997,12 +1221,8 @@ public class Compiler {
         patchJump(exitJump, breakTarget);
 
         // 修补本层 break/next
-        for (int pc : pendingBreaks) patchJump(pc, breakTarget);
-        for (int pc : pendingNexts) patchJump(pc, continueTarget);
-
-        // 恢复外层
-        pendingBreaks.clear(); pendingBreaks.addAll(outerBreaks);
-        pendingNexts.clear(); pendingNexts.addAll(outerNexts);
+        for (int pc : frame.breakJumps) patchJump(pc, breakTarget);
+        for (int pc : frame.nextJumps) patchJump(pc, continueTarget);
 
         if (!singleVar) {
             emit(IRInstruction.of(IROpCode.POP_SCOPE), stmt.getLocation());
@@ -1027,14 +1247,14 @@ public class Compiler {
             emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, condReg, 0), stmt.getLocation());
         }
 
-        // 保存外层 break/next
-        List<Integer> outerBreaks = new ArrayList<>(pendingBreaks);
-        List<Integer> outerNexts = new ArrayList<>(pendingNexts);
-        pendingBreaks.clear();
-        pendingNexts.clear();
+        // FOR 帧：经典 for 是 Aria 自由区构造,按 for-in 同语义完整消耗 break/next
+        LoopFrame frame = new LoopFrame(LoopFrame.FOR);
+        loopFrames.push(frame);
 
         // body
         compileNode(stmt.getBody(), -1);
+
+        loopFrames.pop();
 
         // next 跳转到这里（update）
         int continueTarget = currentPC();
@@ -1050,71 +1270,54 @@ public class Compiler {
         }
 
         // 修补本层 break/next
-        for (int pc : pendingBreaks) patchJump(pc, breakTarget);
-        for (int pc : pendingNexts) patchJump(pc, continueTarget);
-
-        // 恢复外层
-        pendingBreaks.clear(); pendingBreaks.addAll(outerBreaks);
-        pendingNexts.clear(); pendingNexts.addAll(outerNexts);
+        for (int pc : frame.breakJumps) patchJump(pc, breakTarget);
+        for (int pc : frame.nextJumps) patchJump(pc, continueTarget);
 
         emit(IRInstruction.of(IROpCode.POP_SCOPE), stmt.getLocation());
     }
 
     private void compileSwitch(SwitchStmt stmt) {
-        int condReg = compileNode(stmt.getCondition(), -1);
-
         if (stmt.isFallthrough()) {
-            // 编译成：检查每个 case，匹配则跳到对应 body，不匹配跳到下一个 case 检查
-            // 所有 body 顺序排列，不加 break 会穿透到下一个 body
-            List<Integer> bodyLabels = new ArrayList<>(); // 每个 case body 的起始 PC
-            List<Integer> checkJumps = new ArrayList<>(); // 不匹配时跳到下一个 case 检查
+            // Shimmer 对齐(controlflow-03,bug-for-bug 按 SwitchStatement 源码)：
+            //   顺序逐 case——每个 case 条件都求值并与"当前比对值"eq 比较(匹配后仍继续比对后续
+            //   case)；匹配 → 执行 case 块并把比对值替换为该块的结果值；全部 case 过完后 else
+            //   总是执行；case/else 块内 break 被 switch 消耗(跳过 else,switch 结果 NONE)；
+            //   next/return 穿透。不存在 C 式无条件穿透。
+            int condVal = compileNode(stmt.getCondition(), -1);
+            int compareReg = nextRegister();
+            emit(IRInstruction.of(IROpCode.MOVE, compareReg, condVal), stmt.getLocation());
 
-            // 第一阶段：生成所有 case 条件检查，匹配则跳到对应 body
-            for (int i = 0; i < stmt.getCases().size(); i++) {
-                CaseStmt caseStmt = stmt.getCases().get(i);
+            LoopFrame frame = new LoopFrame(LoopFrame.SWITCH);
+            loopFrames.push(frame);
+
+            for (CaseStmt caseStmt : stmt.getCases()) {
                 int caseValReg = compileNode(caseStmt.getCondition(), -1);
                 int eqReg = nextRegister();
-                emit(IRInstruction.of(IROpCode.EQ, eqReg, condReg, caseValReg), caseStmt.getLocation());
-                // 匹配则跳到 body（延迟修补）
-                bodyLabels.add(-1); // 占位，后面修补
-                int matchJump = currentPC();
-                emit(IRInstruction.of(IROpCode.JUMP_IF_TRUE, eqReg, 0), caseStmt.getLocation());
-                checkJumps.add(matchJump);
-            }
-            // 所有 case 都不匹配，跳到 else 或 end
-            int elseJump = currentPC();
-            emit(IRInstruction.of(IROpCode.JUMP, 0, 0), null);
+                emit(IRInstruction.of(IROpCode.EQ, eqReg, compareReg, caseValReg), caseStmt.getLocation());
+                int skipJump = currentPC();
+                emit(IRInstruction.of(IROpCode.JUMP_IF_FALSE, eqReg, 0), caseStmt.getLocation());
 
-            // 保存外层 break（switch 中的 break 跳出 switch）
-            List<Integer> outerBreaks = new ArrayList<>(pendingBreaks);
-            pendingBreaks.clear();
-
-            // 第二阶段：生成所有 case body（顺序排列，穿透）
-            for (int i = 0; i < stmt.getCases().size(); i++) {
-                CaseStmt caseStmt = stmt.getCases().get(i);
-                int bodyPC = currentPC();
-                // 修补匹配跳转
-                patchJump(checkJumps.get(i), bodyPC);
-                compileNode(caseStmt.getBody(), -1);
-                // 不加 JUMP — 穿透到下一个 body
+                // 匹配：执行块并把比对值替换为块结果(Shimmer 怪癖,bug-for-bug)
+                int bodyVal = compileStatementValue(caseStmt.getBody());
+                if (bodyVal >= 0) {
+                    emit(IRInstruction.of(IROpCode.MOVE, compareReg, bodyVal), caseStmt.getLocation());
+                } else {
+                    emit(IRInstruction.of(IROpCode.LOAD_NONE, compareReg), caseStmt.getLocation());
+                }
+                patchJump(skipJump, currentPC());
             }
 
-            int breakTarget = currentPC();
-
-            // else 块
-            patchJump(elseJump, stmt.getElseBlock() != null ? breakTarget : breakTarget);
+            // else 总是执行(除非某个已执行块内 break)
             if (stmt.getElseBlock() != null) {
-                int elsePC = currentPC();
-                patchJump(elseJump, elsePC);
                 compileNode(stmt.getElseBlock(), -1);
-                breakTarget = currentPC();
             }
+            loopFrames.pop();
 
-            // 修补 break
-            for (int pc : pendingBreaks) patchJump(pc, breakTarget);
-            pendingBreaks.clear();
-            pendingBreaks.addAll(outerBreaks);
+            // break 消耗点：跳过 else、结束 switch
+            int breakTarget = currentPC();
+            for (int pc : frame.breakJumps) patchJump(pc, breakTarget);
         } else {
+            int condReg = compileNode(stmt.getCondition(), -1);
             List<Integer> endJumps = new ArrayList<>();
 
             for (CaseStmt caseStmt : stmt.getCases()) {
@@ -1148,7 +1351,7 @@ public class Compiler {
      */
     private int compileAsync(AsyncStmt stmt, int dst) {
         if (dst < 0) dst = nextRegister();
-        Compiler subCompiler = new Compiler();
+        Compiler subCompiler = forSubProgram();
         IRProgram subProg = subCompiler.compile("<async>", stmt.getBody());
 
         // 隐式返回：若末尾不是 RETURN，补一条返回最后求值结果（与 compileLambda 一致）
@@ -1209,7 +1412,7 @@ public class Compiler {
         int classReg = nextRegister();
 
         // 编译字段初始化子程序：对每个有默认值的实例字段，直接内联编译默认值表达式
-        Compiler fieldInitCompiler = new Compiler();
+        Compiler fieldInitCompiler = forSubProgram();
         // 手动构建字段初始化程序：LOAD_SELF → 对每个字段 SET_PROP self.field = defaultValue → RETURN
         // 使用一个子编译器来编译整个字段初始化体
         List<ASTNode> fieldInitStmts = new ArrayList<>();
@@ -1240,7 +1443,7 @@ public class Compiler {
         // 静态字段初始化子程序：self = ObjectValue<ClassDefinition>，SET_PROP 写入静态字段
         IRProgram staticInitProg = null;
         if (!staticInitStmts.isEmpty()) {
-            Compiler staticInitCompiler = new Compiler();
+            Compiler staticInitCompiler = forSubProgram();
             BlockStmt staticInitBlock = new BlockStmt(stmt.getLocation(), staticInitStmts);
             staticInitProg = staticInitCompiler.compile(stmt.getName() + ".<static-init>", staticInitBlock);
         }
@@ -1256,7 +1459,7 @@ public class Compiler {
         List<String> staticMethodNames = new ArrayList<>();
         List<Integer> staticMethodSubIndices = new ArrayList<>();
         for (ClassDeclStmt.ClassMethodDecl method : stmt.getMethods()) {
-            Compiler methodCompiler = new Compiler();
+            Compiler methodCompiler = forSubProgram();
             // method.body() 是 LambdaExpr，需要提取其内部 body
             ASTNode methodBody = method.body();
             if (methodBody instanceof LambdaExpr lambda) {
@@ -1277,7 +1480,7 @@ public class Compiler {
         // 编译构造函数为子程序
         int ctorSubIdx = -1;
         if (stmt.getConstructor() != null) {
-            Compiler ctorCompiler = new Compiler();
+            Compiler ctorCompiler = forSubProgram();
             ASTNode ctorBody = stmt.getConstructor();
             // JS 模式的 constructor 被包装为 LambdaExpr，需要提取其内部 body
             if (ctorBody instanceof LambdaExpr lambda) {
@@ -1369,8 +1572,9 @@ public class Compiler {
 
         // ...rest 收集剩余元素（仅数组模式支持）
         if (stmt.getRestName() != null && !objectPattern) {
-            // 编译为: var.rest = value.subList(startIdx)
-            // 通过 CALL_STATIC 调用内部辅助函数
+            // 编译为: var.rest = value.#rest(startIdx)
+            // A5：不再借道脚本可见的 subList(其单参形态已按 Shimmer 对齐为 none)——
+            // 走 ListFunctions 注册的内部辅助 "#rest"(名字含 '#'，脚本方法语法不可达)。
             int startConst = addConstant(new NumberValue(stmt.getNames().size()));
             int startReg = nextRegister();
             emit(IRInstruction.of(IROpCode.LOAD_CONST, startReg, startConst), stmt.getLocation());
@@ -1384,7 +1588,7 @@ public class Compiler {
 
             int restReg = nextRegister();
             IRInstruction subListCall = IRInstruction.of(IROpCode.CALL_METHOD, restReg, valueReg, 1);
-            subListCall.name = "subList";
+            subListCall.name = "#rest";
             subListCall.c = argBase + 1; // 跳过 self，只传 from
             emit(subListCall, stmt.getLocation());
 
@@ -1398,16 +1602,26 @@ public class Compiler {
     }
 
     private void compileExport(ExportStmt stmt) {
-        // 先编译内部语句
-        compileNode(stmt.getStatement(), -1);
+        // Shimmer 对齐(variables-7/8 连带修复)：裸名与 var./val. 隔离后，LOAD_SCOPE 再读
+        // `export var.x = ...` 会得 none(val 脚本写更是 no-op)。赋值形导出直接复用赋值表达式的
+        // 值寄存器；其余(class 声明等仍写 scope)保持 LOAD_SCOPE 再读。
+        int valReg;
+        if (stmt.getStatement() instanceof ExpressionStmt es && es.getExpression() instanceof AssignmentExpr) {
+            valReg = compileNode(es.getExpression(), -1); // compileAssignment 返回真实值寄存器
+        } else {
+            compileNode(stmt.getStatement(), -1);
+            valReg = -1;
+        }
 
         // 提取导出的变量名
         String exportName = extractExportName(stmt.getStatement());
         if (exportName != null) {
-            // 从 scope/var 加载变量值
-            int valReg = nextRegister();
-            int ki = addVariableKey(exportName);
-            emit(IRInstruction.of(IROpCode.LOAD_SCOPE, valReg, ki), stmt.getLocation());
+            if (valReg < 0) {
+                // 从 scope 加载变量值(class 声明等)
+                valReg = nextRegister();
+                int ki = addVariableKey(exportName);
+                emit(IRInstruction.of(IROpCode.LOAD_SCOPE, valReg, ki), stmt.getLocation());
+            }
 
             // 存入 __exports__ map
             int exportsKi = addVariableKey("__exports__");
@@ -1444,6 +1658,10 @@ public class Compiler {
     }
 
     private void compileImport(ImportStmt stmt) {
+        // Shimmer 对齐(R2)副作用修复：lambda 体隔离后闭包不再捕获外层 scope，而模块函数普遍引用
+        // 同文件 import 的符号——import 绑定改存 var 存储(STORE_VAR；模块用独立 LocalStorage 执行，
+        // 不外泄到导入方)，别名记入 importAliases，同文件(含嵌套体)的裸名读经 compileIdentifier
+        // 编译为 LOAD_VAR、裸名调用经 resolveVariable 的 var 回退命中。
         if (stmt.getPath() != null) {
             // import a.b.c 或 import a.b.c as alias
             String fullPath = String.join(".", stmt.getPath());
@@ -1455,7 +1673,8 @@ public class Compiler {
             String alias = stmt.getAlias() != null ? stmt.getAlias()
                     : stmt.getPath().get(stmt.getPath().size() - 1);
             int ki = addVariableKey(alias);
-            emit(IRInstruction.of(IROpCode.STORE_SCOPE, reg, ki), stmt.getLocation());
+            importAliases.add(alias);
+            emit(IRInstruction.of(IROpCode.STORE_VAR, reg, ki), stmt.getLocation());
         } else if (stmt.getNames() != null && stmt.getSource() != null) {
             // import {a, b} from 'source'
             int srcConst = addConstant(new StringValue(stmt.getSource()));
@@ -1467,7 +1686,8 @@ public class Compiler {
                 int propReg = nextRegister();
                 emit(IRInstruction.of(IROpCode.GET_PROP, propReg, modReg).withName(name), stmt.getLocation());
                 int ki = addVariableKey(name);
-                emit(IRInstruction.of(IROpCode.STORE_SCOPE, propReg, ki), stmt.getLocation());
+                importAliases.add(name);
+                emit(IRInstruction.of(IROpCode.STORE_VAR, propReg, ki), stmt.getLocation());
             }
         }
     }
@@ -1483,14 +1703,27 @@ public class Compiler {
                 }
             }
             case BREAK -> {
-                // 编译成 JUMP → 循环出口（延迟修补）
-                pendingBreaks.add(currentPC());
-                emit(IRInstruction.of(IROpCode.JUMP, 0, 0), stmt.getLocation());
+                // Shimmer 对齐(syntax-06/controlflow-04/05)：BREAK 穿透所有 WHILE(泄漏),
+                // 被最近的 FOR(循环出口)或 SWITCH(跳过 else)消耗；无消耗者 → RETURN none
+                // (整脚本优雅终止,修 Aria 旧 JUMP 0,0 悬空挂死)。
+                LoopFrame target = null;
+                for (LoopFrame f : loopFrames) {
+                    if (f.type != LoopFrame.WHILE) {
+                        target = f;
+                        break;
+                    }
+                }
+                if (target != null) {
+                    target.breakJumps.add(currentPC());
+                    emit(IRInstruction.of(IROpCode.JUMP, 0, 0), stmt.getLocation());
+                } else {
+                    emit(IRInstruction.of(IROpCode.RETURN, -1), stmt.getLocation());
+                }
             }
             case NEXT -> {
-                // 编译成 JUMP → 循环更新（延迟修补）
-                pendingNexts.add(currentPC());
-                emit(IRInstruction.of(IROpCode.JUMP, 0, 0), stmt.getLocation());
+                // Shimmer 对齐：NEXT 被最近的 FOR/WHILE 消耗(SWITCH 穿透)；WHILE 消耗时置
+                // 泄漏标志(末轮 next 后条件为假退出则继续外传)；无消耗者 → RETURN none。
+                emitNextPropagation(loopFrames.iterator(), stmt.getLocation());
             }
             case THROW -> {
                 if (stmt.getValue() != null) {

@@ -49,8 +49,8 @@ public class EdgeCaseTest {
     @Test
     void testListMap() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 2, 3, 4, 5]
-            val.doubled = list.map(-> { return args[0] * 2 })
+            list = [1, 2, 3, 4, 5]
+            doubled = list.map(-> { return args[0] * 2 })
             return doubled.get(2)
             """);
         assertEquals(6.0, result.numberValue());
@@ -59,8 +59,8 @@ public class EdgeCaseTest {
     @Test
     void testListFilter() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 2, 3, 4, 5, 6]
-            val.evens = list.filter(-> { return args[0] % 2 == 0 })
+            list = [1, 2, 3, 4, 5, 6]
+            evens = list.filter(-> { return args[0] % 2 == 0 })
             return evens.size()
             """);
         assertEquals(3.0, result.numberValue());
@@ -69,8 +69,8 @@ public class EdgeCaseTest {
     @Test
     void testListReduce() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 2, 3, 4, 5]
-            val.sum = list.reduce(-> { return args[0] + args[1] }, 0)
+            list = [1, 2, 3, 4, 5]
+            sum = list.reduce(-> { return args[0] + args[1] }, 0)
             return sum
             """);
         assertEquals(15.0, result.numberValue());
@@ -79,8 +79,8 @@ public class EdgeCaseTest {
     @Test
     void testListFind() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 2, 3, 4, 5]
-            val.found = list.find(-> { return args[0] > 3 })
+            list = [1, 2, 3, 4, 5]
+            found = list.find(-> { return args[0] > 3 })
             return found
             """);
         assertEquals(4.0, result.numberValue());
@@ -89,7 +89,7 @@ public class EdgeCaseTest {
     @Test
     void testListEvery() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [2, 4, 6, 8]
+            list = [2, 4, 6, 8]
             return list.every(-> { return args[0] % 2 == 0 })
             """);
         assertTrue(result.booleanValue());
@@ -98,7 +98,7 @@ public class EdgeCaseTest {
     @Test
     void testListSome() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [1, 3, 5, 6]
+            list = [1, 3, 5, 6]
             return list.some(-> { return args[0] % 2 == 0 })
             """);
         assertTrue(result.booleanValue());
@@ -107,7 +107,7 @@ public class EdgeCaseTest {
     @Test
     void testListJoin() throws AriaException {
         IValue<?> result = eval("""
-            val.list = ['a', 'b', 'c']
+            list = ['a', 'b', 'c']
             return list.join('-')
             """);
         assertEquals("a-b-c", result.stringValue());
@@ -116,7 +116,7 @@ public class EdgeCaseTest {
     @Test
     void testListSortBy() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [3, 1, 4, 1, 5]
+            list = [3, 1, 4, 1, 5]
             list.sortBy(-> { return args[0] })
             return list.get(0)
             """);
@@ -127,7 +127,7 @@ public class EdgeCaseTest {
     void testMapForEach() throws AriaException {
         // 不抛异常就算通过
         eval("""
-            val.m = {'a': 1, 'b': 2}
+            m = {'a': 1, 'b': 2}
             var.count = 0
             m.forEach(-> { count = count + 1 })
             """);
@@ -136,8 +136,8 @@ public class EdgeCaseTest {
     @Test
     void testMapEntries() throws AriaException {
         IValue<?> result = eval("""
-            val.m = {'x': 10, 'y': 20}
-            val.entries = m.entries()
+            m = {'x': 10, 'y': 20}
+            entries = m.entries()
             return entries.size()
             """);
         assertEquals(2.0, result.numberValue());
@@ -146,26 +146,28 @@ public class EdgeCaseTest {
 
     @Test
     void testClosureSharedState() throws AriaException {
+        // Shimmer 对齐(R2)：lambda 体与定义处 scope 隔离——体内 x 不可见,返回 none(数值 0)。
         IValue<?> result = eval("""
-            var.x = 10
+            x = 10
             var.f = -> { return x }
-            var.x = 20
+            x = 20
             return f()
             """);
-        assertEquals(20.0, result.numberValue());
+        assertEquals(0.0, result.numberValue());
     }
 
     @Test
     void testFunctionAsReturnValue() throws AriaException {
         IValue<?> result = eval("""
             var.makeAdder = -> {
-                val.n = args[0]
+                n = args[0]
                 return -> { return n + args[0] }
             }
-            val.add5 = makeAdder(5)
+            add5 = makeAdder(5)
             return add5(3)
             """);
-        assertEquals(8.0, result.numberValue());
+        // Shimmer 对齐(R2)：工厂闭包无法捕获 n(隔离)——none + 3 = 3.0。
+        assertEquals(3.0, result.numberValue());
     }
 
 
@@ -201,7 +203,7 @@ public class EdgeCaseTest {
     @Test
     void testChainedListMethods() throws AriaException {
         IValue<?> result = eval("""
-            val.list = [3, 1, 4, 1, 5, 9]
+            list = [3, 1, 4, 1, 5, 9]
             return list.filter(-> { return args[0] > 3 }).size()
             """);
         assertEquals(3.0, result.numberValue());
@@ -244,7 +246,7 @@ public class EdgeCaseTest {
     @Test
     void testMultilineExpression() throws AriaException {
         IValue<?> result = eval("""
-            var.x = 1 +
+            x = 1 +
                 2 +
                 3
             return x
@@ -256,9 +258,9 @@ public class EdgeCaseTest {
     @Test
     void testListAddImmutable() throws AriaException {
         IValue<?> result = eval("""
-            val.a = [1, 2]
-            val.b = [3, 4]
-            val.c = a + b
+            a = [1, 2]
+            b = [3, 4]
+            c = a + b
             return a.size()
             """);
         // Shimmer 对齐：list 加法【原地修改】，a 变为 [1,2,3,4]，size=4
@@ -269,8 +271,8 @@ public class EdgeCaseTest {
     @Test
     void testSpreadInList() throws AriaException {
         IValue<?> result = eval("""
-            val.a = [1, 2, 3]
-            val.b = [0, ...a, 4, 5]
+            a = [1, 2, 3]
+            b = [0, ...a, 4, 5]
             return b.size()
             """);
         assertEquals(6.0, result.numberValue());
@@ -279,9 +281,9 @@ public class EdgeCaseTest {
     @Test
     void testSpreadMultiple() throws AriaException {
         IValue<?> result = eval("""
-            val.a = [1, 2]
-            val.b = [3, 4]
-            val.c = [...a, ...b]
+            a = [1, 2]
+            b = [3, 4]
+            c = [...a, ...b]
             return c.size()
             """);
         assertEquals(4.0, result.numberValue());
@@ -299,7 +301,7 @@ public class EdgeCaseTest {
     @Test
     void testRegexMatch() throws AriaException {
         IValue<?> result = eval("""
-            val.m = regex.match('([0-9]+)', 'price: 42 dollars')
+            m = regex.match('([0-9]+)', 'price: 42 dollars')
             return m.get(1)
             """);
         assertEquals("42", result.stringValue());
@@ -316,7 +318,7 @@ public class EdgeCaseTest {
     @Test
     void testRegexSplit() throws AriaException {
         IValue<?> result = eval("""
-            val.parts = regex.split('[,;]', 'a,b;c,d')
+            parts = regex.split('[,;]', 'a,b;c,d')
             return parts.size()
             """);
         assertEquals(4.0, result.numberValue());
@@ -327,7 +329,7 @@ public class EdgeCaseTest {
     void testDestructureBasic() throws AriaException {
         IValue<?> result = eval("""
             var.[a, b, c] = [10, 20, 30]
-            return a + b + c
+            return var.a + var.b + var.c
             """);
         assertEquals(60.0, result.numberValue());
     }

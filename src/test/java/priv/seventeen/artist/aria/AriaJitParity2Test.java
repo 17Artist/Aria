@@ -68,14 +68,14 @@ public class AriaJitParity2Test {
     // ---- Bug2: Map for-in ----
     @Test
     void mapForIn_interp_and_jit() throws AriaException {
-        String code = "val.m = {'a': 10, 'b': 20, 'c': 30}\nvar.s = 0\nfor (e in m) { var.s = var.s + e[1] }\nreturn var.s\n";
+        String code = "var.m = {'a': 10, 'b': 20, 'c': 30}\nvar.s = 0\nfor (e in var.m) { var.s = var.s + e[1] }\nreturn var.s\n";
         assertEquals(60.0, Aria.eval(code, ctx()).numberValue(), "解释器 Map for-in 求值和");
         assertEquals(60.0, jit(code, this::ctx).numberValue(), "JIT 下 Map for-in 应仍为 60(原忽略 for-in 哨兵 → 错乱)");
     }
 
     @Test
     void mapForInDestructure_jit() throws AriaException {
-        String code = "val.m = {'a': 10, 'b': 20}\nvar.s = 0\nfor (k, v in m) { var.s = var.s + v }\nreturn var.s\n";
+        String code = "var.m = {'a': 10, 'b': 20}\nvar.s = 0\nfor (k, v in var.m) { var.s = var.s + v }\nreturn var.s\n";
         assertEquals(30.0, jit(code, this::ctx).numberValue(), "JIT 下 for(k,v in map) 解构");
     }
 
@@ -105,7 +105,7 @@ public class AriaJitParity2Test {
     // ---- Bug6: val 存的 lambda 裸名调用 ----
     @Test
     void valLambdaCall_jit() throws AriaException {
-        String code = "val.g = -> { return args[0] + 1 }\nreturn g(9)\n";
+        String code = "var.g = -> { return args[0] + 1 }\nreturn g(9)\n";
         assertEquals(10.0, Aria.eval(code, ctx()).numberValue(), "解释器 val lambda 裸名调用");
         assertEquals(10.0, jit(code, this::ctx).numberValue(), "JIT 下 val lambda 裸名调用(原 rtCallByName 漏查 val → NONE)");
     }

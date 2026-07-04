@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 import priv.seventeen.artist.aria.callable.InvocationData;
 import priv.seventeen.artist.aria.object.ClassInstance;
 import priv.seventeen.artist.aria.value.reference.IReference;
@@ -35,9 +37,10 @@ public final class AriaClassValue extends IValue<ClassInstance> {
     @Override public int typeID() { return 6; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
+    @Override public String typeName() { return value != null ? value.getTypeName() : "class"; }
 
     @Override
-    protected IValue<?> addValue(IValue<?> other) {
+    protected IValue<?> addValue(IValue<?> other) throws AriaRuntimeException {
         FunctionValue fn = findOperator("__add__");
         if (fn != null) {
             return invokeOperator(fn, other);
@@ -46,7 +49,7 @@ public final class AriaClassValue extends IValue<ClassInstance> {
     }
 
     @Override
-    protected IValue<?> subValue(IValue<?> other) {
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
         FunctionValue fn = findOperator("__sub__");
         if (fn != null) {
             return invokeOperator(fn, other);

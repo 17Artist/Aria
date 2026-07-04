@@ -50,6 +50,14 @@ public class AriaRuntimeException extends AriaException {
         this.endLine = -1;
     }
 
+
+    public AriaRuntimeException(String message, int startLine, int startColumn, int endLine, Throwable cause) {
+        super(message, cause);
+        this.startLine = startLine;
+        this.startColumn = startColumn;
+        this.endLine = endLine;
+    }
+
     public int getStartLine() { return startLine; }
     public int getStartColumn() { return startColumn; }
     public int getEndLine() { return endLine; }

@@ -21,9 +21,9 @@ Aria 是基于作者早年作品 Shimmer 的续作，语法理念和运行时结
 没有分号，没有 `new`，没有冗余修饰。换行即语句，箭头即函数，点号即声明：
 
 ```
-var.name = 'World'
+name = 'World'
 var.greet = -> { return 'Hello, ' + args[0] + '!' }
-print(greet(name))
+print(greet(name))    // Hello, World!
 ```
 
 ### 点号前缀变量
@@ -31,8 +31,8 @@ print(greet(name))
 五种命名空间，一个点号分发语义：
 
 ```
-var.x = 10          // 局部可变
-val.PI = 3.14       // 局部不可变
+var.x = 10          // 局部可变（跨执行持久）
+val.slot            // 宿主注入只读槽（脚本写入静默忽略）
 global.score = 0    // 全局共享，线程安全
 server.config        // 读取触发监听
 client.name = 'A'   // 写入触发监听
@@ -44,7 +44,9 @@ client.name = 'A'   // 写入触发监听
 
 ```
 var.fibonacci = -> {
-    if (args[0] <= 1) return args[0]
+    if (args[0] <= 1) {
+        return args[0]
+    }
     return fibonacci(args[0] - 1) + fibonacci(args[0] - 2)
 }
 ```
@@ -61,19 +63,20 @@ class Animal {
 }
 
 class Dog extends Animal {
+    new = -> { super(args[0]) }
     speak = -> { return self.name + ' barks!' }
 }
 
-val.dog = Dog('Rex')
+dog = Dog('Rex')
 print(dog.speak())  // Rex barks!
 ```
 
 ### Java 互操作
 
 ```
-val.HashMap = use('java.util.HashMap')
-val.map = HashMap()
-map.put('key', 'value')
+HashMap = use('java.util.HashMap')
+m = HashMap()
+m.put('key', 'value')
 ```
 
 ## 架构

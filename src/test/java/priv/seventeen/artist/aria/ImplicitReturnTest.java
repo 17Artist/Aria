@@ -29,7 +29,7 @@ public class ImplicitReturnTest {
 
     @Test
     void lastStatementOfMultiIsReturned() throws AriaException {
-        assertEquals(6.0, Aria.eval("var.a = 3\na * 2\n", ctx()).numberValue(), 1e-9);
+        assertEquals(6.0, Aria.eval("a = 3\na * 2\n", ctx()).numberValue(), 1e-9);
     }
 
     @Test

@@ -41,6 +41,7 @@ public final class FunctionValue extends IValue<ICallable> {
     @Override public int typeID() { return 7; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
+    @Override public String typeName() { return "function"; }
 
     @Override
     public String toString() { return "function"; }

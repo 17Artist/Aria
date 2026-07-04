@@ -104,4 +104,8 @@ public enum IROpCode {
                         // (区别于通用 ADD 对 map+非map 的静默容错)
     NEW_ASYNC,          // async { body }：把 body(子程序 a)提交线程池执行，dst = 真 PromiseValue；
                         // 捕获闭包作用域 + 传播沙箱到 worker 线程；主线程不执行 body（await 阻塞取结果）
+    AUTO_INVOKE,        // Shimmer 对齐(R2 系, Assignment.getResult 自动调用)：r[dst] 若为可调用值
+                        // (FunctionValue/StoreOnly<CWI>)则零参调用并以结果覆写 r[dst]；否则原样保留。
+                        // 编译器仅在"简单赋值且 RHS 是裸变量读(标识符/命名空间点读)且非 lambda 字面量"时发射，
+                        // 复刻 Shimmer `x = f` 立即求值语义(实测 X13/Y06/Y20/cases3#7)
 }

@@ -33,7 +33,19 @@ public final class ListValue extends IValue<List<IValue<?>>> {
 
     @Override public List<IValue<?>> jvmValue() { return value; }
     @Override public double numberValue() { return value.size(); }
-    @Override public String stringValue() { return value.toString(); }
+    // Shimmer 对齐(operators-14):手工拼 "[a, b]",元素用 stringValue()(none→空串、数字→N.0),不走 Java toString。
+    @Override public String stringValue() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("[");
+        for (IValue<?> iValue : value) {
+            builder.append(iValue.stringValue()).append(", ");
+        }
+        if (!value.isEmpty()) {
+            builder.delete(builder.length() - 2, builder.length());
+        }
+        builder.append("]");
+        return builder.toString();
+    }
     @Override public boolean booleanValue() { return !value.isEmpty(); }
     @Override public int typeID() { return 11; }
     @Override public boolean canMath() { return false; }
@@ -52,14 +64,18 @@ public final class ListValue extends IValue<List<IValue<?>>> {
 
     @Override
     protected IValue<?> subValue(IValue<?> other) {
-        // Shimmer 对齐：原地删除并返回 this；list-number 按 |idx| 删（越界抛异常，与 Shimmer 一致）。
+        // Shimmer 对齐(operators-15):原地删除并返回 this;非 list 一律按 Math.abs(intValue()) 当索引删
+        // (字符串/none/bool 同样折算索引;越界/空 list 抛异常,bug-for-bug)。
         if (other instanceof ListValue lv) {
             this.value.removeAll(lv.jvmValue());
-        } else if (other instanceof NumberValue nv) {
-            this.value.remove(Math.abs((int) nv.numberValue()));
+        } else {
+            this.value.remove(Math.abs(other.intValue()));
         }
         return this;
     }
+
+    @Override
+    public String typeName() { return "list"; }
 
     @Override
     public String toString() { return stringValue(); }

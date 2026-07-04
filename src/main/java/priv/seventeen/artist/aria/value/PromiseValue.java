@@ -80,6 +80,7 @@ public final class PromiseValue extends IValue<CompletableFuture<IValue<?>>> {
     @Override public int typeID() { return 15; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
+    @Override public String typeName() { return "promise"; }
 
     @Override public String toString() { return stringValue(); }
 

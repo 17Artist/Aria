@@ -118,7 +118,7 @@ public class FibSanityCheck {
                 var.obj = {'x': 7, 'y': 11}
                 var.sum = 0
                 for (var.i = 0; var.i < 50; var.i += 1) {
-                    var.sum += obj.x + obj.y
+                    var.sum += var.obj.x + var.obj.y
                     global.counter += 1
                 }
                 return var.sum

@@ -64,7 +64,7 @@ public class ModulesTest {
     @Test
     void testCryptoBase64() throws AriaException {
         IValue<?> result = eval("""
-            val.encoded = crypto.base64Encode('hello world')
+            encoded = crypto.base64Encode('hello world')
             return crypto.base64Decode(encoded)
             """);
         assertEquals("hello world", result.stringValue());
@@ -86,7 +86,7 @@ public class ModulesTest {
     @Test
     void testDateTimeFormat() throws AriaException {
         IValue<?> result = eval("""
-            val.ts = datetime.now()
+            ts = datetime.now()
             return datetime.format(ts, 'yyyy')
             """);
         assertTrue(result.stringValue().length() == 4); // year
@@ -95,8 +95,8 @@ public class ModulesTest {
     @Test
     void testDateTimeFields() throws AriaException {
         IValue<?> result = eval("""
-            val.ts = datetime.now()
-            val.year = datetime.year(ts)
+            ts = datetime.now()
+            year = datetime.year(ts)
             return year > 2020
             """);
         assertTrue(result.booleanValue());
@@ -105,8 +105,8 @@ public class ModulesTest {
     @Test
     void testDateTimeDiff() throws AriaException {
         IValue<?> result = eval("""
-            val.a = datetime.now()
-            val.b = datetime.addDays(a, 1)
+            a = datetime.now()
+            b = datetime.addDays(a, 1)
             return datetime.diff(a, b, 'days')
             """);
         assertEquals(1.0, result.numberValue(), 0.01);

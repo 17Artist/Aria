@@ -19,8 +19,9 @@ package priv.seventeen.artist.aria.value.reference;
 import priv.seventeen.artist.aria.value.IValue;
 
 /**
- * val 不可变存储引用。脚本端只能初始化一次——重赋的拦截由解释器 STORE_VAL 处理器据 {@link #isAssigned()}
- * 抛错完成(本类 setValue 不抛受检异常);Java 宿主端 forceSetValue 始终可覆盖(host 强制赋值)。
+ * val 存储引用。Shimmer 对齐(variables-8, Shimmer ValueReference)：{@link #setValue}(脚本路径)
+ * 是 no-op——返回入参但不存储，脚本对 val 的一切写入静默失效；只有 Java 宿主端
+ * {@link #forceSetValue} 能真正写入(host 注入控件句柄等)。
  */
 public final class ValueReference implements IReference {
     private IValue<?> value;
@@ -30,7 +31,7 @@ public final class ValueReference implements IReference {
         this.value = value;
     }
 
-    /** 是否已被赋过值(脚本初始化或宿主 forceSet)。用于 val 不可变性判定。 */
+    /** 是否已被宿主 forceSet 过值。 */
     public boolean isAssigned() { return assigned; }
 
     @Override
@@ -40,8 +41,7 @@ public final class ValueReference implements IReference {
 
     @Override
     public IValue<?> setValue(IValue<?> value) {
-        this.value = value;
-        this.assigned = true;
+        // Shimmer 对齐(variables-8)：脚本写 val 静默忽略(返回入参不存储)。
         return value;
     }
 

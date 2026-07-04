@@ -16,6 +16,9 @@
 
 package priv.seventeen.artist.aria.object;
 
+import priv.seventeen.artist.aria.annotation.java.AriaInvokeHandler;
+import priv.seventeen.artist.aria.callable.InvocationData;
+
 import java.util.UUID;
 
 public class UUIDObject implements IAriaObject {
@@ -26,14 +29,43 @@ public class UUIDObject implements IAriaObject {
         this.uuid = UUID.randomUUID();
     }
 
+    // Shimmer 对齐(builtins-static-7):解析失败回退 randomUUID(不抛异常)。
     public UUIDObject(String str) {
-        this.uuid = UUID.fromString(str);
+        UUID temp;
+        try {
+            temp = UUID.fromString(str);
+        } catch (Exception e) {
+            temp = UUID.randomUUID();
+        }
+        this.uuid = temp;
     }
 
     public UUID getUuid() { return uuid; }
 
-    @Override public String getTypeName() { return "UUID"; }
+    // Shimmer 对齐(builtins-object-12):getTypeName="uuid"(小写)。
+    @Override public String getTypeName() { return "uuid"; }
     @Override public String stringValue() { return uuid.toString(); }
+
+    // Shimmer 对齐(builtins-object-11):四个实例方法,返回值同 Shimmer(long/int → number)。
+    @AriaInvokeHandler("getMostSignificantBits")
+    public long getMostSignificantBits(InvocationData data) {
+        return uuid.getMostSignificantBits();
+    }
+
+    @AriaInvokeHandler("getLeastSignificantBits")
+    public long getLeastSignificantBits(InvocationData data) {
+        return uuid.getLeastSignificantBits();
+    }
+
+    @AriaInvokeHandler("version")
+    public int version(InvocationData data) {
+        return uuid.version();
+    }
+
+    @AriaInvokeHandler("variant")
+    public int variant(InvocationData data) {
+        return uuid.variant();
+    }
 
     @Override
     public String toString() { return uuid.toString(); }

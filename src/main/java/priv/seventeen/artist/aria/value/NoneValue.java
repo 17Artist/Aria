@@ -20,6 +20,14 @@ public final class NoneValue extends IValue<Object> {
 
     public static final NoneValue NONE = new NoneValue();
 
+    /**
+     * for-in 迭代结束哨兵(Shimmer 对齐 controlflow-09)：与 {@link #NONE} 身份不同的第二个 none 实例。
+     * 只在 GET_INDEX(forIn) → JUMP_IF_NONE(forIn) 之间流转，不进入脚本可见值域——
+     * 解释器 for-in 判终用身份比较(== ITER_END)，含 none 元素的列表因此可完整遍历；
+     * 仍是 NoneValue 实例，JIT 生成码的 INSTANCEOF NoneValue 判终不受影响(不会死循环)。
+     */
+    public static final NoneValue ITER_END = new NoneValue();
+
     private NoneValue() {}
 
     @Override public Object jvmValue() { return null; }
@@ -36,6 +44,9 @@ public final class NoneValue extends IValue<Object> {
 
     @Override
     protected IValue<?> subValue(IValue<?> other) { return other; }
+
+    @Override
+    public String typeName() { return "none"; }
 
     @Override
     public String toString() { return "none"; }

@@ -17,7 +17,7 @@
 package priv.seventeen.artist.aria.value;
 
 import priv.seventeen.artist.aria.value.reference.IReference;
-import priv.seventeen.artist.aria.value.reference.VariableReference;
+import priv.seventeen.artist.aria.value.reference.ImmutableNoneReference;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -28,11 +28,15 @@ public sealed abstract class Variable extends IData permits Variable.Normal, Var
     @Override public boolean isBaseType() { return ariaValue() != null && ariaValue().isBaseType(); }
     @Override public int typeID() { return ariaValue() != null ? ariaValue().typeID() : 0; }
 
+    @Override public String typeName() { return "variable"; }
+
     public abstract IValue<?> setValue(IValue<?> value);
 
         public static final class Normal extends Variable {
 
-        public static final Normal NONE = new Normal(new VariableReference(NoneValue.NONE));
+        // Shimmer 对齐共享 NONE 单例的引用写入为 no-op(对照 Shimmer ValueReference.setValue
+        // 返回入参不存储),杜绝 `对象缺省属性 = x` 污染全局 NONE。
+        public static final Normal NONE = new Normal(new ImmutableNoneReference());
 
         private final IReference reference;
 

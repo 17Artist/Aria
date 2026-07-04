@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 
 public final class MutableStringValue extends IValue<String> {
 
@@ -45,6 +47,7 @@ public final class MutableStringValue extends IValue<String> {
     @Override public int typeID() { return 3; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return true; }
+    @Override public String typeName() { return "string"; }
 
     public int length() { return builder.length(); }
 
@@ -56,8 +59,8 @@ public final class MutableStringValue extends IValue<String> {
     }
 
     @Override
-    protected IValue<?> subValue(IValue<?> other) {
-        return new StringValue(stringValue(), true).sub(other);
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
+        return new StringValue(stringValue()).sub(other);
     }
 
     @Override

@@ -1,0 +1,1412 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases_findings.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | PASS | FINDING syntax-01
+--- SRC
+// FINDING syntax-01 [critical] 字符串插值 IR 寄存器窗口错位——嵌入表达式非单寄存器时输出乱码
+return "a{1+1}b{2+2}c"
+// Shimmer: a2.0b4.0c   Aria: a2.01.01.0b
+--- EXPECT
+R1 OK a2.0b4.0c ##StringValue
+R2 OK a2.0b4.0c ##StringValue
+R3 OK a2.0b4.0c ##StringValue
+R4 OK a2.0b4.0c ##StringValue
+R5 OK a2.0b4.0c ##StringValue
+--- END
+
+### CASE 2 | PASS | FINDING syntax-02
+--- SRC
+// FINDING syntax-02 [critical] 裸调用 range(1,3) 在 Aria 解析为普通标识符调用→none,for-in 零迭代
+s = 0
+for (i in range(1,3)) {
+s = s + 1
+}
+return s
+// Shimmer: 3   Aria: 0
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 3 | PASS | FINDING syntax-03
+--- SRC
+// FINDING syntax-03 [high] ~~ (IN_RANGE) 语义三重不一致: 端点开闭/非 Range 右值回退/列表右值
+return 5 ~~ 5
+// Shimmer: false   Aria: true
+// 另: 3 ~~ range(1,3) → Shimmer true / Aria false(半开)
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 4 | PASS | FINDING syntax-04
+--- SRC
+// FINDING syntax-04 [high] 行首运算符续行(换行折叠)在 Aria 全部编译错误: .method() / ? : / && / || / ( / 
+m = {'a': 1}
+return m
+.size()
+// Shimmer: 1.0   Aria: CompileException(Unexpected token: DOT)
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 5 | PASS | FINDING syntax-05
+--- SRC
+// FINDING syntax-05 [high] 字符串转义语义相反: Shimmer 原样保留反斜杠,Aria 展开为控制字符
+return 'a\nb'
+// Shimmer: 字面 a\nb (4字符)   Aria: a(换行)b (3字符)
+--- EXPECT
+R1 OK a\nb ##StringValue
+R2 OK a\nb ##StringValue
+R3 OK a\nb ##StringValue
+R4 OK a\nb ##StringValue
+R5 OK a\nb ##StringValue
+--- END
+
+### CASE 6 | PASS | FINDING syntax-06
+--- SRC
+// FINDING syntax-06 [high] while+break 在 Shimmer 会终止整个脚本(BREAK 控制流外泄),Aria 正常继续
+s = 0
+while (s < 5) {
+s = s + 2
+break
+}
+return s
+// Shimmer: none(return s 被跳过)   Aria: 2.0
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 7 | PASS | FINDING syntax-07
+--- SRC
+// FINDING syntax-07 [medium] Aria 新增 14 个保留字,Shimmer 里合法的变量名(match/from/as/class/try/…)编译
+match = 5
+return match
+// Shimmer: 5.0   Aria: CompileException(Expected LPAREN, got ASSIGN)
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 8 | PASS | FINDING syntax-08
+--- SRC
+// FINDING syntax-08 [medium] Shimmer 静默丢弃无法续接的尾部代码(部分执行),Aria fail-fast 整体编译失败
+a = 1
++ 2
+c = 3
+return c
+// Shimmer: 1.0(后三行静默丢弃)   Aria: CompileException 全脚本失效
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 9 | EXPECTED | FINDING syntax-09
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: return true and false | )
+--- SRC
+// FINDING syntax-09 [medium] Aria 不强制语句分隔符——缺分隔/词法运算符写法不再报错而是静默算出别的值
+return true and false
+// Shimmer: 编译错误(响亮)   Aria: true(静默错值)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 10 | PASS | FINDING syntax-10
+--- SRC
+// FINDING syntax-10 [medium] if/elif/for/while/switch 与 ( 之间的换行: Shimmer 允许,Aria 编译错
+if
+(true){
+return 8
+}
+// Shimmer: 8.0   Aria: CompileException(Expected LPAREN, got NEWLINE)
+--- EXPECT
+R1 OK 8.0 ##NumberValue
+R2 OK 8.0 ##NumberValue
+R3 OK 8.0 ##NumberValue
+R4 OK 8.0 ##NumberValue
+R5 OK 8.0 ##NumberValue
+--- END
+
+### CASE 11 | EXPECTED | FINDING syntax-11
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 11 列 | 请检查: if(true){ return 5 } | )
+--- SRC
+// FINDING syntax-11 [medium] Aria 放宽块内语句终结与空块: 单行 { stmt }、return 5}、if(true){}、分号分隔在 Shi
+if(true){ return 5 }
+// Shimmer: 编译错误(UI 路径按纯文本回退)   Aria: 5.0
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 12 | EXPECTED | FINDING syntax-12
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: return 3 ? 4 : | )
+--- SRC
+// FINDING syntax-12 [low] 三元真分支省略形态: Shimmer `a ? b :` 与 `a ? b` 均编译错(自身 parser bug),A
+return 3 ? 4 :
+// Shimmer: 编译错误   Aria: 4.0
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 13 | EXPECTED | FINDING syntax-13
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码(错误原因：表达式语句解析失败))
+--- SRC
+// FINDING syntax-13 [low] 插值边缘: 空插值 {}、未闭合 {、\{ 转义的行为不同
+return "a{}b"
+// Shimmer: 编译错误   Aria: "ab"
+--- EXPECT
+R1 OK ab ##StringValue
+R2 OK ab ##StringValue
+R3 OK ab ##StringValue
+R4 OK ab ##StringValue
+R5 OK ab ##StringValue
+--- END
+
+### CASE 14 | EXPECTED | FINDING syntax-14
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: m = {'a':1,} | )
+--- SRC
+// FINDING syntax-14 [low] map 尾随逗号、关键字作点成员(m.in 等)、空脚本: Aria 放宽
+m = {'a':1,}
+return m['a']
+// Shimmer: 编译错误   Aria: 1.0
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 15 | EXPECTED | FINDING syntax-15
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: return 0x1F | )
+--- SRC
+// FINDING syntax-15 [low] 数字字面量扩展: 0x/0b/0o/科学计数仅 Aria 支持
+return 0x1F
+// Shimmer: 编译错误   Aria: 31.0
+--- EXPECT
+R1 OK 31.0 ##NumberValue
+R2 OK 31.0 ##NumberValue
+R3 OK 31.0 ##NumberValue
+R4 OK 31.0 ##NumberValue
+R5 OK 31.0 ##NumberValue
+--- END
+
+### CASE 16 | EXPECTED | FINDING syntax-16
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: return 1..5 | )
+--- SRC
+// FINDING syntax-16 [low] Aria 专属语法家族: .. 区间、in/instanceof、?./??、位运算与移位、@注解、for(;;)、ma
+return 1..5
+// Shimmer: 编译错误   Aria: Range(1.0, 5.0)
+--- EXPECT
+R1 OK [range:1.0-5.0] ##ObjectValue
+R2 OK [range:1.0-5.0] ##ObjectValue
+R3 OK [range:1.0-5.0] ##ObjectValue
+R4 OK [range:1.0-5.0] ##ObjectValue
+R5 OK [range:1.0-5.0] ##ObjectValue
+--- END
+
+### CASE 17 | PASS | FINDING operators-1
+--- SRC
+// FINDING operators-1 [critical] 解释器算术 opcode 原地复用目标寄存器 NumberValue,循环中改写已逃逸的值/常量池(静默数据腐坏)
+var.out = []
+for (i in [1, 2, 3]) {
+  var.out = var.out + (i + 100)
+}
+// Shimmer: var.out == [101.0, 102.0, 103.0]
+// Aria(解释器首轮执行): 同一 NumberValue 被原地改写并重复 append → [103.0, 103.0, 103.0]
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 18 | PASS | FINDING operators-2
+--- SRC
+// FINDING operators-2 [critical] 字符串拼接产 MutableStringValue,后续 `+` 原地 append,共享该字符串的变量被静默改写
+var.a = "x" + "y"
+var.b = var.a + "z"
+// Shimmer: var.a == "xy", var.b == "xyz"
+// Aria: var.a 被原地 append → var.a == "xyz"(与 var.b 是同一对象)
+--- EXPECT
+R1 OK xyz ##StringValue
+R2 OK xyz ##StringValue
+R3 OK xyz ##StringValue
+R4 OK xyz ##StringValue
+R5 OK xyz ##StringValue
+--- END
+
+### CASE 19 | PASS | FINDING operators-3
+--- SRC
+// FINDING operators-3 [high] 拼接产物 canBeNumber 恒 false(StringValue(s,true)/MutableString/R
+var.s = "" + 5
+var.a = var.s + 1    // Shimmer: 6.0 ; Aria: "5.01.0"
+var.b = var.s == 5   // Shimmer: true ; Aria: false
+var.c = var.s > 3    // Shimmer: true(5>3) ; Aria: false(0>3)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 20 | PASS | FINDING operators-5
+--- SRC
+// FINDING operators-5 [high] 布尔与非数字字符串的 == 失去字符串回退比较:true == "true" 由 true 变 false
+var.f = true
+var.r = (var.f == "true")   // Shimmer: true ; Aria: false
+var.r2 = ("false" == false) // Shimmer: true ; Aria: false
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 21 | PASS | FINDING operators-6
+--- SRC
+// FINDING operators-6 [medium] `~~`(IN_RANGE) 语义三处不同:端点开闭、非 range 右值 fallback、list 右值
+var.a = 5 ~~ range(1,5)  // Shimmer: true(闭区间) ; Aria: false(end 开)
+var.b = 5 ~~ 5           // Shimmer: false ; Aria: true(fallback 到 eq)
+var.c = 3 ~~ [1,5]       // Shimmer: false ; Aria: true(list 当区间)
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 22 | PASS | FINDING operators-7
+--- SRC
+// FINDING operators-7 [medium] 布尔参与 +/- 的 Shimmer 原始行为(含其源码 bug)未复刻
+var.a = true + "1"   // Shimmer: "true1" ; Aria: 2.0
+var.b = true - 1     // Shimmer: 2.0(源码用了+) ; Aria: 0.0
+var.c = true + true  // Shimmer: "truetrue" ; Aria: 2.0
+--- EXPECT
+R1 OK truetrue ##StringValue
+R2 OK truetrue ##StringValue
+R3 OK truetrue ##StringValue
+R4 OK truetrue ##StringValue
+R5 OK truetrue ##StringValue
+--- END
+
+### CASE 23 | PASS | FINDING operators-8
+--- SRC
+// FINDING operators-8 [medium] 一批非法操作数场景由『抛异常中断脚本』变『静默数值化继续执行』
+var.a = 1 + [1,2]    // Shimmer: 抛异常脚本中断 ; Aria: 3.0(list按size)
+var.b = [1,2] >= 1   // Shimmer: 抛『类型不支持比较』 ; Aria: true
+var.c = -"abc"       // Shimmer: 抛『字符串内容非数字』 ; Aria: -0.0
+var.d = 0; var.s = "a"; var.s++  // Shimmer: "a1.0" ; Aria: 1.0
+--- EXPECT
+R1 ERR AriaRuntimeException: number 类型不支持与 list 类型进行加法运算 (line 2:9)
+R2 ERR AriaRuntimeException: number 类型不支持与 list 类型进行加法运算
+R3 ERR AriaRuntimeException: number 类型不支持与 list 类型进行加法运算
+R4 ERR AriaRuntimeException: number 类型不支持与 list 类型进行加法运算
+R5 ERR AriaRuntimeException: number 类型不支持与 list 类型进行加法运算
+--- END
+
+### CASE 24 | PASS | FINDING operators-9
+--- SRC
+// FINDING operators-9 [low] 数字 - 非数字字符串:Shimmer 返回 replace 后的字符串,Aria 返回数值
+var.a = 10.5 - "."   // Shimmer: "105"(字符串) ; Aria: 10.5(数值)
+--- EXPECT
+R1 OK 105 ##StringValue
+R2 OK 105 ##StringValue
+R3 OK 105 ##StringValue
+R4 OK 105 ##StringValue
+R5 OK 105 ##StringValue
+--- END
+
+### CASE 25 | PASS | FINDING operators-11
+--- SRC
+// FINDING operators-11 [low] 字符串数字识别收窄:长度≤30 且首字符必须 [0-9 + - .],丢失空白容忍与 Infinity/NaN
+var.a = " 5" + 1    // Shimmer: 6.0 ; Aria: " 51.0"
+var.b = " 2" > 1    // Shimmer: true(2>1) ; Aria: false(0>1)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 26 | PASS | FINDING operators-12
+--- SRC
+// FINDING operators-12 [medium] JIT fastDouble 路径 DIV/MOD 缺除零守护:热函数除零得 Infinity/NaN 而非 0
+var.d = fun(n) { if (n <= 0) { return 0 } return 10 / (n - 1) + var.d(n - 1) }
+var.r = var.d(2)
+// 解释器/Shimmer: 10/1 + 10/0→0 = 10.0 ; fastDouble JIT 后: 10 + Infinity = Infinity
+--- EXPECT
+R1 ERR AriaRuntimeException: 不支持的后缀运算: (line 2:9)
+R2 ERR AriaRuntimeException: 不支持的后缀运算:
+R3 ERR AriaRuntimeException: 不支持的后缀运算:
+R4 ERR AriaRuntimeException: 不支持的后缀运算:
+R5 ERR AriaRuntimeException: 不支持的后缀运算:
+--- END
+
+### CASE 27 | PASS | FINDING operators-13
+--- SRC
+// FINDING operators-13 [medium] JIT map 字面量产 SmallMapValue:typeID=5、stringValue="map(n)"、与 M
+// 需同一 routine 执行≥2 次触发 JIT
+var.m = {"a": 1}
+var.m2 = {"b": 2}
+var.m = var.m + var.m2   // 解释器: {a,b 合并} ; JIT: MapValue+SmallMapValue 静默丢弃合并
+var.s = "" + var.m       // 解释器: "{a=1.0...}" ; JIT(SmallMap): "map(1)" ; Shimmer: "{a:1.0...}"
+--- EXPECT
+R1 OK {a:1.0,b:2.0} ##StringValue
+R2 OK {a:1.0,b:2.0} ##StringValue
+R3 OK {a:1.0,b:2.0} ##StringValue
+R4 OK {a:1.0,b:2.0} ##StringValue
+R5 OK {a:1.0,b:2.0} ##StringValue
+--- END
+
+### CASE 28 | PASS | FINDING operators-14
+--- SRC
+// FINDING operators-14 [low] list/map 转字符串格式不同:none 元素显示 "none"、map 用 = 分隔
+var.a = "" + [1, none]   // Shimmer: "[1.0, ]" ; Aria: "[1.0, none]"
+var.b = "" + {"k": 1}    // Shimmer: "{k:1.0}" ; Aria: "{k=1.0}"
+--- EXPECT
+R1 OK {k:1.0} ##StringValue
+R2 OK {k:1.0} ##StringValue
+R3 OK {k:1.0} ##StringValue
+R4 OK {k:1.0} ##StringValue
+R5 OK {k:1.0} ##StringValue
+--- END
+
+### CASE 29 | PASS | FINDING operators-15
+--- SRC
+// FINDING operators-15 [low] list - 非数字非list 值:Shimmer 按 intValue 当索引删,Aria 无操作
+var.l = [10, 20, 30]
+var.l - "1"   // Shimmer: 删下标1 → [10.0, 30.0] ; Aria: 不变 [10.0, 20.0, 30.0]
+--- EXPECT
+R1 OK [10.0, 30.0] ##ListValue
+R2 OK [10.0, 30.0] ##ListValue
+R3 OK [10.0, 30.0] ##ListValue
+R4 OK [10.0, 30.0] ##ListValue
+R5 OK [10.0, 30.0] ##ListValue
+--- END
+
+### CASE 30 | SKIP | FINDING controlflow-01
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-01 [critical] range(a,b) 端点包含性:Shimmer 含 end,Aria 不含 end
+r = 0
+for (i in range(1,3)) { r = r + 1 }
+return r
+// Shimmer: 3   Aria: 2
+// 另: return 3 in range(1,3)  → Shimmer true / Aria false
+--- EXPECT
+--- END
+
+### CASE 31 | SKIP | FINDING controlflow-02
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-02 [medium] range 反向与 step 参数:Shimmer 恒 +1 且 start>end 零次;Aria 自动 -1 倒序且
+r = ""
+for (i in range(3,1)) { r = r + "x" }
+return r
+// Shimmer: "" (0 次)   Aria: "xxx" (3,2,1... 实际 3,2 两次,exclusive)
+// 另: for (i in range(0,10,2)) → Shimmer 11 次(step 被忽略) / Aria 5 次
+--- EXPECT
+--- END
+
+### CASE 32 | SKIP | FINDING controlflow-03
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-03 [high] switch 匹配后语义:Aria C 式穿透执行后续所有 case body;Shimmer 是逐条重比对(用 cas
+x = 1
+r = ""
+switch(x){ case 1 { r = r + "a" } case 2 { r = r + "b" } else { r = r + "e" } }
+return r
+// Shimmer: "ae" (case2 条件 2 == "a" 不匹配,else 执行)
+// Aria:    "abe" (穿透执行 case2 body 再落入 else)
+--- EXPECT
+--- END
+
+### CASE 33 | SKIP | FINDING controlflow-04
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-04 [high] Shimmer while 泄漏 BREAK/NEXT 控制流(break 中断整个外层块/外层循环),Aria bre
+var.r = "start"
+while(true){ break }
+var.r = "after"
+// Shimmer: var.r == "start" (break 泄漏,后续语句全部被跳过)
+// Aria:    var.r == "after"
+--- EXPECT
+--- END
+
+### CASE 34 | SKIP | FINDING controlflow-05
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-05 [high] break/next 出现在循环外(顶层/仅 switch 外层/lambda/async 子程序内):Shimmer 
+var.r = "before"
+if (true) { break }
+var.r = "after"
+// Shimmer: 脚本终止,var.r == "before"
+// Aria: JUMP→pc0,脚本从头无限循环,线程挂起
+--- EXPECT
+--- END
+
+### CASE 35 | SKIP | FINDING controlflow-07
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-07 [high] 函数缺少实参:Shimmer args[i] 越界返回 none,Aria args 是普通列表越界抛异常
+f = -> { if (args[0] == none) { return "default" } return args[0] }
+return f()
+// Shimmer(function{} 写法): "default"
+// Aria: 运行时异常 "列表索引越界: 0 (size=0)"
+--- EXPECT
+--- END
+
+### CASE 36 | SKIP | FINDING controlflow-08
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-08 [high] 顶层隐式返回边界:末语句是 if/while/for/switch 时,Shimmer 返回所选分支/最后一次循环体的值
+if (true) { "yes" } else { "no" }
+// Shimmer: 返回 "yes"
+// Aria: then 路径 JUMP 跳过 else,RETURN 的是 else 分支寄存器(未写入)→ none
+--- EXPECT
+--- END
+
+### CASE 37 | SKIP | FINDING controlflow-09
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-09 [medium] for-in 遍历含 none 元素的列表提前终止(Aria 用 none 哨兵判终)
+var.l = [1, none, 3]
+r = 0
+for (x in var.l) { r = r + 1 }
+return r
+// Shimmer: 3   Aria: 1
+--- EXPECT
+--- END
+
+### CASE 38 | SKIP | FINDING controlflow-10
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-10 [medium] for-in map/多变量细节:变量数校验、遍历中修改、迭代顺序、list 多变量解构均不一致
+var.m = {"a": 1}
+for (e in var.m) { return e }
+// Shimmer: 运行时错误(变量数量错误)   Aria: 返回 ["a", 1.0]
+// 另: for (k, v, x in var.m) → Shimmer x=none / Aria 抛列表越界
+--- EXPECT
+--- END
+
+### CASE 39 | SKIP | FINDING controlflow-11
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-11 [medium] 循环变量循环后可见性:Shimmer 留在外层作用域(=最后值),Aria 单变量是寄存器别名(循环后不可见/不覆盖同名
+i = 99
+for (i in [1,2,3]) { }
+return i
+// Shimmer: 3   Aria: 99
+--- EXPECT
+--- END
+
+### CASE 40 | SKIP | FINDING controlflow-12
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-12 [medium] async 块语义:Shimmer 全新 ScopeStack(看不到外层裸名变量)+异常打印;Aria 闭包按引用捕获
+[host/线程] x = "outer"
+async { var.r = x }
+// (稍等异步完成) Shimmer: var.r == none (x 不可见)
+// Aria: var.r == "outer"
+--- EXPECT
+--- END
+
+### CASE 41 | PASS | FINDING controlflow-13
+--- SRC
+// FINDING controlflow-13 [high] 裸名变量与 var./val. 存储互通:Aria 的 LOAD_SCOPE/STORE_SCOPE 回退到 var/v
+var.x = 5
+x = 1
+return var.x
+// Shimmer: 5   Aria: 1
+// 另: var.x = 5 后 return x → Shimmer none / Aria 5
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 42 | SKIP | FINDING controlflow-14
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-14 [medium] 列表显式索引越界:解释器(两个入口)抛异常,JIT 仍返回 none——对齐修复未覆盖 JIT
+f = -> { l = [1,2]
+return l[5] }
+// 反复调用 f():JIT 阈值前每次抛"列表索引越界";编译后返回 none
+// Shimmer 恒抛错
+--- EXPECT
+--- END
+
+### CASE 43 | PASS | FINDING controlflow-16
+--- SRC
+// FINDING controlflow-16 [low] 递归深度:Shimmer 无限制(JVM 爆栈→'内部错误'),Aria 固定 512 层抛异常
+f = -> { if (args[0] <= 0) { return 0 }
+return f(args[0] - 1) }
+return f(1000)
+// Shimmer(function{} 写法): 正常返回 0(千层内不爆栈)
+// Aria: 超过 512 层报错
+--- EXPECT
+R1 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:8)
+R2 ERR AriaRuntimeException: 不支持的后缀运算:
+R3 ERR AriaRuntimeException: 不支持的后缀运算:
+R4 ERR AriaRuntimeException: 不支持的后缀运算:
+R5 ERR AriaRuntimeException: 不支持的后缀运算:
+--- END
+
+### CASE 44 | SKIP | FINDING controlflow-17
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING controlflow-17 [low] for-in 非可迭代目标:Shimmer 报错,Aria 静默 0 次(数字/none)或逐字符迭代(字符串)
+r = "ok"
+for (c in 5) { r = "looped" }
+return r
+// Shimmer: 运行时错误(整脚本失败)
+// Aria: "ok"(静默跳过循环,继续执行)
+--- EXPECT
+--- END
+
+### CASE 45 | EXPECTED | FINDING builtins-static-1
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 3 行,第 25 列 | 请检查: for (i in range(1,3)) { c = c + 1 } | )
+--- SRC
+// FINDING builtins-static-1 [critical] 全局构造器 range() 小写裸调用在 Aria 完全失效(注册了但解析层不可达),for(i in range(a,
+var.c = 0
+for (i in range(1,3)) { c = c + 1 }
+return c
+// Shimmer: 3 (迭代 1,2,3) —— Aria 实测: 0 (range(1,3) 求值为 none,循环体从不执行)
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 46 | EXPECTED | FINDING builtins-static-2
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 3 行,第 25 列 | 请检查: for (i in range(1,3)) { c = c + 1 } | )
+--- SRC
+// FINDING builtins-static-2 [critical] range 区间语义:Shimmer 双端闭 [start,end],Aria 半开 [start,end) —— fo
+var.c = 0
+for (i in range(1,3)) { c = c + 1 }
+return c
+// Shimmer: 3 —— Aria(即使修复 finding-1 使 range 可达,或写 1..3): 2
+// 另: if (7 ~~ range(3,7)) —— Shimmer true,Aria false
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 47 | PASS | FINDING builtins-static-3
+--- SRC
+// FINDING builtins-static-3 [high] Math.pi() 缺失:Aria 只有 math.PI/Math.PI,pi 小写不存在 → 静默返回 none
+return Math.pi() * 2
+// Shimmer: 6.283185307179586 —— Aria: 0.0 (Math.pi() 为 none,none 当 0)
+--- EXPECT
+R1 OK 6.283185307179586 ##NumberValue
+R2 OK 6.283185307179586 ##NumberValue
+R3 OK 6.283185307179586 ##NumberValue
+R4 OK 6.283185307179586 ##NumberValue
+R5 OK 6.283185307179586 ##NumberValue
+--- END
+
+### CASE 48 | PASS | FINDING builtins-static-4
+--- SRC
+// FINDING builtins-static-4 [medium] Math.nextAfter 缺失(Aria 只有 nextUp/nextDown)→ 静默返回 none
+return Math.nextAfter(1, 2)
+// Shimmer: 1.0000000000000002 —— Aria: none
+--- EXPECT
+R1 OK 1.0000000000000002 ##NumberValue
+R2 OK 1.0000000000000002 ##NumberValue
+R3 OK 1.0000000000000002 ##NumberValue
+R4 OK 1.0000000000000002 ##NumberValue
+R5 OK 1.0000000000000002 ##NumberValue
+--- END
+
+### CASE 49 | EXPECTED | FINDING builtins-static-5
+# Aria free-zone (Shimmer R1: OK:  ##NoneValue)
+--- SRC
+// FINDING builtins-static-5 [medium] Shimmer 命名空间(Shimmer.print / Shimmer.println)整体缺失 → 调试输出静默失效
+Shimmer.print("debug-mark")
+// Shimmer: stdout 输出 debug-mark + 换行 —— Aria: 无任何输出,无报错
+--- EXPECT
+R1 ERR AriaRuntimeException: 不支持的后缀运算: (line 2:1)
+R2 ERR AriaRuntimeException: 不支持的后缀运算:
+R3 ERR AriaRuntimeException: 不支持的后缀运算:
+R4 ERR AriaRuntimeException: 不支持的后缀运算:
+R5 ERR AriaRuntimeException: 不支持的后缀运算:
+--- END
+
+### CASE 50 | PASS | FINDING builtins-static-6
+--- SRC
+// FINDING builtins-static-6 [medium] 已知命名空间下调用不存在的函数:Shimmer 编译期报错,Aria 静默返回 none
+return Math.florr(3.7)
+// Shimmer: 编译期异常『点运算解析工具集函数不存在』 —— Aria: 静默返回 none(算术中当 0)
+--- EXPECT
+R1 ERR AriaRuntimeException: 点运算解析工具集函数不存在: Math.florr (line 2:8)
+R2 ERR AriaRuntimeException: 点运算解析工具集函数不存在: Math.florr
+R3 ERR AriaRuntimeException: 点运算解析工具集函数不存在: Math.florr
+R4 ERR AriaRuntimeException: 点运算解析工具集函数不存在: Math.florr
+R5 ERR AriaRuntimeException: 点运算解析工具集函数不存在: Math.florr
+--- END
+
+### CASE 51 | PASS | FINDING builtins-static-7
+--- SRC
+// FINDING builtins-static-7 [medium] UUID(非法字符串):Shimmer 回退随机 UUID,Aria 抛运行时异常中断脚本
+var.u = UUID("not-a-uuid")
+return "" + u
+// Shimmer: 随机 UUID 字符串,脚本继续 —— Aria: 抛异常,后续语句不执行
+--- EXPECT
+R1 OK  ##StringValue
+R2 OK  ##StringValue
+R3 OK  ##StringValue
+R4 OK  ##StringValue
+R5 OK  ##StringValue
+--- END
+
+### CASE 52 | PASS | FINDING builtins-static-8
+--- SRC
+// FINDING builtins-static-8 [low] UUID 对象方法缺失:getMostSignificantBits/getLeastSignificantBits/v
+return UUID().version()
+// Shimmer: 4.0 —— Aria: none
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 53 | EXPECTED | FINDING builtins-static-9
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 3 行,第 23 列 | 请检查: for (i in range(5)) { c = c + 1 } | )
+--- SRC
+// FINDING builtins-static-9 [low] range 边缘差异:1 参构造语义相反(Shimmer 空区间 vs Aria 倒序 5 次)、stringValue
+var.c = 0
+for (i in range(5)) { c = c + 1 }
+return c
+// Shimmer: 1 (0..0) —— Aria(设 range 可达): 5 (5,4,3,2,1 倒序)。另 ""+range(1,3): "[range:1.0-3.0]" vs "Range(1.0, 3.0)"
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 54 | SKIP | FINDING builtins-static-10
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING builtins-static-10 [low] i-Common number.round 覆盖机制核查:验证可靠(JIT 热身后不回退),但存在三处将来易踩的旁路/时
+var.f = -> { var.n = 5.436
+return n.round(2) }
+var.r = ""
+for (i in Range(0, 50)) { r = f() }
+return r
+// 期望且实测(带 i-Common 覆盖): "5.44" 字符串,JIT 热身前后一致 —— 覆盖机制未被旁路
+--- EXPECT
+--- END
+
+### CASE 55 | PASS | FINDING builtins-object-1
+--- SRC
+// FINDING builtins-object-1 [critical] list.remove 语义完全不同：Shimmer 按值删除返回 boolean，Aria 按索引删除返回被删元素
+var.l = ["a","b","c"]
+var.l.remove("b")
+var.out = var.l[0] + "|" + var.l.size()
+// Shimmer: 删掉"b" → out="a|2"；Aria: "b".numberValue()=0 → 误删下标0 → out="b|2"
+--- EXPECT
+R1 OK a|2.0 ##StringValue
+R2 OK a|2.0 ##StringValue
+R3 OK a|2.0 ##StringValue
+R4 OK a|2.0 ##StringValue
+R5 OK a|2.0 ##StringValue
+--- END
+
+### CASE 56 | PASS | FINDING builtins-object-2
+--- SRC
+// FINDING builtins-object-2 [high] list.removeIndex 在 Aria 不存在：调用静默无效
+var.l = [1,2,3]
+var.l.removeIndex(0)
+var.out = var.l.size()
+// Shimmer: out=2；Aria: 方法不存在，列表不变 → out=3
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 57 | PASS | FINDING builtins-object-3
+--- SRC
+// FINDING builtins-object-3 [high] list.add(index, element) 双参插入丢失：Aria 把索引当元素追加、丢弃真正元素
+var.l = ["a","c"]
+var.l.add(1, "b")
+var.out = var.l[1] + "|" + var.l.size()
+// Shimmer: ["a","b","c"] → "b|3"；Aria: ["a","c",1] → "c|3"
+--- EXPECT
+R1 OK b|3.0 ##StringValue
+R2 OK b|3.0 ##StringValue
+R3 OK b|3.0 ##StringValue
+R4 OK b|3.0 ##StringValue
+R5 OK b|3.0 ##StringValue
+--- END
+
+### CASE 58 | PASS | FINDING builtins-object-4
+--- SRC
+// FINDING builtins-object-4 [medium] list.contains/indexOf/lastIndexOf 相等语义不同：Shimmer 用脚本 eq(跨类型数
+var.found = [1,2,3].contains("2")
+// Shimmer: eq(2,"2") 数值相等 → true；Aria: "2.0"!="2" → false
+// server/client 变量到达时恒为字符串，配数字列表时必踩
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 59 | PASS | FINDING builtins-object-5
+--- SRC
+// FINDING builtins-object-5 [high] string.split 尾部空串保留 + limit 参数被忽略：结果元素个数不同
+var.n = "a,b,,".split(",").size()
+// Shimmer: ["a","b"] → 2；Aria: ["a","b","",""] → 4
+// 另: "a,b,c".split(",", 2) Shimmer=["a","b,c"]，Aria=["a","b","c"]
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 60 | PASS | FINDING builtins-object-6
+--- SRC
+// FINDING builtins-object-6 [critical] JIT 下 ≤4 键的 map 字面量产出 SmallMapValue，全部 map 方法(put/get/size/k
+var.m = {"k": 1}
+var.m.put("x", 2)
+var.out = var.m.size()
+// Shimmer: 恒 out=2；Aria: 第1次执行 out=2，第2次起(JIT) put 无效且 size() 返回 none
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 61 | SKIP | FINDING builtins-object-7
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING builtins-object-7 [high] list.containsAll/retainAll 在 Aria 缺失；addAll/removeAll 返回值 bo
+if([1,2,3].containsAll([1,2])){ var.out = "yes" } else { var.out = "no" }
+// Shimmer: "yes"；Aria: containsAll → none → 恒 "no"
+--- EXPECT
+--- END
+
+### CASE 62 | PASS | FINDING builtins-object-8
+--- SRC
+// FINDING builtins-object-8 [high] 字符串双参重载丢失：startsWith(prefix,offset)/indexOf(s,from)/lastInde
+var.i = "abcabc".indexOf("a", 1)
+// Shimmer: 3；Aria: 第二参被忽略 → 0
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 63 | PASS | FINDING builtins-object-9
+--- SRC
+// FINDING builtins-object-9 [medium] list.set 返回值(旧元素→none)与 get/set 负索引行为差异；subList 越界语义相反
+var.l = ["a","b"]
+var.old = var.l.set(0, "x")
+// Shimmer: old="a"；Aria: old=none
+// 另: [1,2,3].subList(0,3) Shimmer=none，Aria=[1,2,3]
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 64 | PASS | FINDING builtins-object-10
+--- SRC
+// FINDING builtins-object-10 [medium] map.putAll 参数强转 MapValue：JIT 小 map 字面量(SmallMapValue)入参时失败
+var.m = {"a":1,"b":2,"c":3,"d":4,"e":5}   // 5 键 → JIT 下仍是 MapValue
+var.m.putAll({"x": 9})                        // 1 键 → JIT 下是 SmallMapValue
+var.out = var.m.size()
+// Shimmer: 恒 6；Aria: 第2次执行起入参为 SmallMapValue → 合并失败 out=5
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 65 | SKIP | FINDING builtins-object-11
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING builtins-object-11 [high] UUID 对象：4 个方法(getMostSignificantBits/getLeastSignificantBits
+var.u = UUID("not-a-uuid")
+var.out = "" + var.u
+// Shimmer: 随机 uuid 字符串；Aria: IllegalArgumentException → 脚本中断报错
+// 另: fn = (x) => { return "" + UUID() }; var.out2 = fn(0)  → Aria 函数体内 UUID() 为 none → out2=""
+--- EXPECT
+--- END
+
+### CASE 66 | PASS | FINDING builtins-object-12
+--- SRC
+// FINDING builtins-object-12 [low] range 对象表面差异：stringValue/numberValue/typeName 不同，单参 range(5)
+var.s = "" + range(1,3)
+// Shimmer: "[range:1.0-3.0]"；Aria: "Range(1.0, 3.0)"
+// 另: for(i in range(5)){...} 迭代结果不同(Shimmer 空区间 0..0 vs Aria 5..0 降序)——for-in 链路可交叉验证
+--- EXPECT
+R1 OK [range:1.0-3.0] ##StringValue
+R2 OK [range:1.0-3.0] ##StringValue
+R3 OK [range:1.0-3.0] ##StringValue
+R4 OK [range:1.0-3.0] ##StringValue
+R5 OK [range:1.0-3.0] ##StringValue
+--- END
+
+### CASE 67 | PASS | FINDING variables-1
+--- SRC
+// FINDING variables-1 [critical] 顶层/动作块中 `var.x += 1`(及 `var.x = var.x + expr`)若同程序内无 var.x 的
+var.n += 1
+// Shimmer: var.n 变为 1;Aria: AriaRuntimeException NPE(实测 v1.1.16)。加一行 `var.n` 读则不崩(转入 variables-2 的静默跳过)
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 68 | PASS | FINDING variables-2
+--- SRC
+// FINDING variables-2 [high] VAR_INC 快路径对非数字(none/字符串)静默不执行:`var.count += 1` 未初始化时永远不涨
+var.count += 1
+var.count
+// Shimmer: 1;Aria: none(实测)。var.s = "5" 后 var.s += 1 → Shimmer 6,Aria 仍 "5"
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 69 | SKIP | FINDING variables-4
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING variables-4 [critical] 小写 `range(1,3)` 裸调用返回 none(构造器只认首字母大写),`for (i in range(...)
+var.acc = ""
+for (i in range(1,3)) { var.acc = var.acc + "|" + i }
+var.acc
+// Shimmer: "|1|2"(或含3,按区间闭开);Aria 实测: ""(range(1,3) 返回 none,零迭代,无报错)
+--- EXPECT
+--- END
+
+### CASE 70 | SKIP | FINDING variables-5
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING variables-5 [high] STORE_SCOPE/STORE_GLOBAL 不复制 NumberValue + ADD 寄存器就地复用 → 循环中
+var.l = []
+var.i = 0
+while (var.i < 3) { t = var.i + 100
+var.l.add(t)
+var.i = var.i + 1 }
+var.l
+// Shimmer: [100,101,102];Aria 实测: [102,102,102]
+--- EXPECT
+--- END
+
+### CASE 71 | PASS | FINDING variables-7
+--- SRC
+// FINDING variables-7 [medium] 裸名读写回落到 var 存储:`x = 2` 会改写已存在的 var.x,裸读也能读到 var.x/val.x(Shim
+var.x = 1
+x = 2
+var.x
+// Shimmer: 1;Aria 实测: 2
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 72 | PASS | FINDING variables-8
+--- SRC
+// FINDING variables-8 [medium] val 写语义改变:脚本可初始化 val 且重赋抛错(Shimmer:脚本写 val 永远静默忽略,val 仅宿主可写)
+val.k = 5
+val.k
+// Shimmer: none(写被忽略);Aria 实测: 5;第二次 `val.k = 6` Aria 抛 Cannot reassign immutable val(Shimmer 依旧静默)
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 73 | PASS | FINDING variables-9
+--- SRC
+// FINDING variables-9 [low] val.x 读回落 scope/var:`z = 9; val.z` 读到 9(Shimmer 为 none)
+z = 9
+val.z
+// Shimmer: none;Aria 实测: 9
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 74 | PASS | FINDING variables-13
+--- SRC
+// FINDING variables-13 [medium] `var.x++` 语句级后缀自增编译报错(Shimmer 支持);前缀 `++var.x` 与表达式内 `var.z+
+var.x = 1
+var.x++
+var.x
+// Shimmer: 2;Aria 实测: CompileException: Unexpected token: NEWLINE(整段脚本被当纯文本)
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 75 | SKIP | FINDING interop-2
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING interop-2 [critical] 小写裸调用 range(1,3) 不再命中构造器注册表,for-in range 循环体一次都不执行
+var.s = 0
+for (i in range(1,3)) { var.s = var.s + i }
+var.s   // Shimmer: 3 (1+2);Aria 实测: 0
+--- EXPECT
+--- END
+
+### CASE 76 | PASS | FINDING interop-5
+--- SRC
+// FINDING interop-5 [high] list.remove 语义从按值删除翻转为按下标删除;removeIndex/containsAll/retainAl
+var.l = [9,8,7]
+var.l.remove(2)
+'' + var.l[0] + ',' + var.l[1] + ',' + var.l.size()
+// Shimmer: 9,8,3(值2不存在,不删);Aria 实测: 9,8,2(删了下标2的元素7)
+--- EXPECT
+R1 OK 9.0,8.0,3.0 ##StringValue
+R2 OK 9.0,8.0,3.0 ##StringValue
+R3 OK 9.0,8.0,3.0 ##StringValue
+R4 OK 9.0,8.0,3.0 ##StringValue
+R5 OK 9.0,8.0,3.0 ##StringValue
+--- END
+
+### CASE 77 | PASS | FINDING interop-10
+--- SRC
+// FINDING interop-10 [low] UUID 对象:非法字符串构造从『兜底随机UUID』变为抛异常;version/variant/getMostSigni
+var.u = UUID('not-a-uuid')   // Shimmer: 随机UUID;Aria 实测: 抛 Invalid UUID string
+UUID().version()             // Shimmer: 4;Aria 实测: none
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 78 | EXPECTED | FINDING interop-11
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: var.r = 1..5 | )
+--- SRC
+// FINDING interop-11 [low] RangeObject 表面语义变化:stringValue/numberValue/getTypeName 与 Shi
+var.r = 1..5
+'' + var.r   // Shimmer: "[range:1.0-5.0]";Aria 实测: "Range(1.0, 5.0)"
+--- EXPECT
+R1 OK [range:1.0-5.0] ##StringValue
+R2 OK [range:1.0-5.0] ##StringValue
+R3 OK [range:1.0-5.0] ##StringValue
+R4 OK [range:1.0-5.0] ##StringValue
+R5 OK [range:1.0-5.0] ##StringValue
+--- END
+
+### CASE 79 | PASS | FINDING async-1
+--- SRC
+// FINDING async-1 [critical] async 体内 var 复合自增(var.x = var.x + 1 / var.x += y)触发解释器 NPE,语
+var.n = 0
+async { var.n = var.n + 1 }
+Thread.sleep(300)
+// Shimmer: var.n == 1;Aria(v1.1.16 实测): var.n == 0,无任何报错(NPE 被丢进无人 await 的 Promise)
+// await 可观察到:var.p = async { var.n = var.n + 1 }; await p  → "Promise failed"
+--- EXPECT
+R1 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:1)
+R2 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:1)
+R3 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:1)
+R4 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:1)
+R5 ERR AriaRuntimeException: 不支持的后缀运算: (line 4:1)
+--- END
+
+### CASE 80 | SKIP | FINDING async-2
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING async-2 [high] 函数体内含 async/await:inline 解释器不支持该指令,default 回退从 PC0 重放整个函数体,前
+var.count = 0
+var.f = -> {
+  t = var.count + 1
+  var.count = t
+  async { return 1 }
+  return 0
+}
+f()
+// Shimmer: var.count == 1;Aria(实测): var.count == 2(副作用重放)
+// 若函数体写 var.count = var.count + 1 则 Aria 直接抛 varRefs NPE(async-1 叠加)
+--- EXPECT
+--- END
+
+### CASE 81 | SKIP | FINDING async-3
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING async-3 [medium] async 体内 args 丢失:Shimmer 向异步上下文透传外层 args,Aria 传空数组
+var.f = -> {
+  var.p = async { return args[0] }
+  return await p
+}
+return f(42)
+// Shimmer 语义: 42;Aria(实测): none(空输出)
+// (纯语言构造即可复现,无需宿主)
+--- EXPECT
+--- END
+
+### CASE 82 | SKIP | FINDING async-4
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING async-4 [medium] 外层临时(scope)变量在 async 体内的可见性与写穿透:Shimmer 完全隔离,Aria 闭包快照共享引用
+x = 5
+y = 1
+var.p = async { global.seen = x
+ y = 99
+ return 0 }
+var.r = await p
+// Shimmer: global.seen == none, y == 1(隔离)
+// Aria(实测): global.seen == 5, y == 99(共享+写穿透)
+--- EXPECT
+--- END
+
+### CASE 83 | SKIP | FINDING async-5
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING async-5 [medium] fire-and-forget 形式 async 体内异常从"打印堆栈"退化为完全静默
+var.list = [1]
+async { var.x = var.list[5] }  // 越界异常
+// Shimmer: 控制台打印堆栈;Aria(实测): 完全无输出,脚本作者无从得知
+--- EXPECT
+--- END
+
+### CASE 84 | PASS | FINDING jit-1
+--- SRC
+// FINDING jit-1 [critical] fastDoubleVars/fastLongVars 纯数值快路径把所有 var 强转为 NumberValue:布尔
+var.sel = none
+// 或 var.showInfoPanel = true
+// 热身:同一编译产物(UI action routine)执行第2次起。第1次(解释)后 var.sel==none 为 true;第2次起 var.sel 变 NumberValue(0.0),`var.sel == none` 恒 false。
+// 销毁案例: 先 invoke: var.limit = "10" ;再热跑 routine: var.t = var.limit + 1 → t=1 且 var.limit 被覆写为 0.0
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 85 | EXPECTED | FINDING jit-4
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: var.a = var.unset ?? 5 | )
+--- SRC
+// FINDING jit-4 [high] 数值快路径 JUMP_IF_NONE 是 no-op:`??` 空值合并在快路径永远取左值(none 读作 0)
+var.a = var.unset ?? 5
+// var.unset 从未赋值。第1次执行得 5;热身后(第2次起)得 0。
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 86 | PASS | FINDING jit-5
+--- SRC
+// FINDING jit-5 [medium] 数值快路径 NOT/AND/OR 真值用 !=0 而非 Shimmer 的 >0:负数真值错
+var.x = 0 - 1
+var.flag = !var.x
+// 第1次 flag=true;热身后 flag=0.0(false)。
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 87 | PASS | FINDING jit-6
+--- SRC
+// FINDING jit-6 [high] 数值快路径除零/取余零:DDIV→Infinity、DREM→NaN、fastLong LREM→ArithmeticE
+var.b = 0
+var.r = 10 % var.b
+// 常量全整数→fastLongVars。第1次 r=0;第2次起 LREM 抛 ArithmeticException→deopt 重跑(结果恢复 0,但见 jit-10)。改成 var.r = 10 / var.b(含 DIV→fastDoubleVars)则第2次起 r=Infinity。
+--- EXPECT
+R1 OK 0.0 ##NumberValue
+R2 OK 0.0 ##NumberValue
+R3 OK 0.0 ##NumberValue
+R4 OK 0.0 ##NumberValue
+R5 OK 0.0 ##NumberValue
+--- END
+
+### CASE 88 | PASS | FINDING jit-7
+--- SRC
+// FINDING jit-7 [high] 列表显式索引越界:JIT rtGetIndex 返回 none,解释器/Shimmer 抛『索引越界』异常(对齐修复漏了
+var.list = [1, 2]
+var.x = var.list[5]
+// 第1次执行:脚本错误『列表索引越界: 5 (size=2)』;热身后:静默 var.x = none。
+--- EXPECT
+R1 ERR AriaRuntimeException: 列表索引越界: 5 (size=2) (line 3:9)
+R2 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R3 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R4 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R5 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+--- END
+
+### CASE 89 | EXPECTED | FINDING jit-8
+# Aria free-zone (Shimmer R1: ERR: ShimmerRuntimeException: 单元: [t] 运行时错误, 位于第 2 行, 到第 3 行 | 请检查: var.s = "abc" | var.c = var.s[0] |  | 错误信息: 不支持的后缀运算)
+--- SRC
+// FINDING jit-8 [medium] 字符串索引 s[i]:JIT rtGetIndex 无 StringValue 分支恒返回 none
+var.s = "abc"
+var.c = var.s[0]
+// 第1次 c="a";热身后 c=none。
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 90 | SKIP | FINDING jit-9
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-9 [high] 通用 JIT 路径 numericOnly 时算术/比较/INC/DEC/VAR_INC/VAR_ADD_CONST 用
+var.f = -> { return args[0] * args[1] }
+var.r = var.f("3", "4")
+// 需两段:先热身 var.f(3,4) 两次(函数体 numericOnly→通用路径 CHECKCAST 版),再传字符串 → 解释器 12,JIT 抛 CCE→脚本错误。VAR_INC 版: var.s = "a"; var.s += 1(热身后 CCE→deopt 重跑)
+--- EXPECT
+--- END
+
+### CASE 91 | PASS | FINDING jit-10
+--- SRC
+// FINDING jit-10 [high] JIT 运行期异常触发静默 deopt 并在同一调用内重新解释执行:已发生副作用被重复执行
+var.count = var.count + 1
+var.s = "a"
+var.s += 1
+// 热身1次;第2次执行:JIT 里 var.count 先+1,随后 VAR_ADD_CONST CHECKCAST CCE → deopt → 解释器整段重跑 → var.count 又 +1(单次执行 +2)。宿主调用(如发包)同理重复。
+--- EXPECT
+R1 OK a1.0 ##StringValue
+R2 OK a1.0 ##StringValue
+R3 OK a1.0 ##StringValue
+R4 OK a1.0 ##StringValue
+R5 OK a1.0 ##StringValue
+--- END
+
+### CASE 92 | PASS | FINDING jit-11
+--- SRC
+// FINDING jit-11 [high] IRInstruction.cache 类型混用:JIT 写入 StaticCallCache 后回落解释器时 (ICa
+var.l = [1]
+l2 = var.l
+l2.add(2)      // 编成 CALL_STATIC "l2.add" → JIT 后装 StaticCallCache…(此例演意;任一 obj.method 形式即可)
+var.s = "a"
+var.s += 1     // 制造 CCE → deopt
+// deopt 后解释器执行到该 CALL_STATIC:(ICallable)StaticCallCache → CCE,永久脚本错误
+--- EXPECT
+R1 OK a1.0 ##StringValue
+R2 OK a1.0 ##StringValue
+R3 OK a1.0 ##StringValue
+R4 OK a1.0 ##StringValue
+R5 OK a1.0 ##StringValue
+--- END
+
+### CASE 93 | SKIP | FINDING jit-12
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-12 [high] 通用 JIT 路径的 lambda 内联(isSimpleBinaryLambda/emitInlinedLambda)
+var.f = -> { return args[0] * 2 + args[1] }
+var.r = var.f(3, 4)
+// 同一 routine 热身1次:第1次 r=10;第2次起 r=12(3*4)。
+--- EXPECT
+--- END
+
+### CASE 94 | SKIP | FINDING jit-13
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-13 [high] FunctionCallable.detectFastLambda(JIT NEW_FUNCTION 产物)与解释器 t
+var.sub = -> { return args[1] - args[0] }
+var.r = var.sub(3, 10)
+// 期望 7;Aria 得 -7(tryCreateFastLambda 首次即错,无需热身)。
+var.m = -> { return args[0] % args[1] }; var.m(7,3) // 外层 routine 热身后(NEW_FUNCTION→FunctionCallable)得 0,应得 1
+--- EXPECT
+--- END
+
+### CASE 95 | PASS | FINDING jit-15
+--- SRC
+// FINDING jit-15 [medium] rtCallByNameCached 内联缓存:装配条件与解析来源不一致(scope 解析却按 var 存储校验),且宿
+var.box = ["V"]
+box = ["S"]        // scope 同名
+box.add("x")
+var.r = "" + box[1] + "|" + var.box.size()
+// 第1次:加进 scope 的 box(r="x|1");热身后:热路径按 var.box 校验命中 → 加进 var.box。
+--- EXPECT
+R1 OK x|1.0 ##StringValue
+R2 OK x|1.0 ##StringValue
+R3 OK x|1.0 ##StringValue
+R4 OK x|1.0 ##StringValue
+R5 OK x|1.0 ##StringValue
+--- END
+
+### CASE 96 | PASS | FINDING jit-16
+--- SRC
+// FINDING jit-16 [high] ConstantFolding 跨控制流不健全:三目两分支写同一寄存器时被线性折叠,(cond ? 1 : 2) + 3
+var.c = 1
+var.y = (var.c > 0 ? 1 : 2) + 3
+// 期望 4;Aria 恒得 5(首次执行即错,无需热身)。
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 97 | SKIP | FINDING jit-18
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-18 [critical] JIT NEW_MAP(≤4 项)产 SmallMapValue,解释器产 MapValue:热身后 map 字面量 f
+var.m = {'a': 10, 'b': 20}
+var.s = 0
+for (e in var.m) { var.s = var.s + e[1] }
+// 热身1次:第1次 s=30;第2次起 NEW_MAP 产 SmallMapValue → for-in 立即退出 → s=0。
+// 方法版: var.m = {'a':1}; var.k = var.m.keys() → 热身后 none
+--- EXPECT
+--- END
+
+### CASE 98 | EXPECTED | FINDING jit-19
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 3 行,第 1 列 | 请检查: var.f = -> { x = x + 10; return x } | )
+--- SRC
+// FINDING jit-19 [medium] JIT NEW_FUNCTION 闭包不做 snapshotForClosure,且 FunctionCallable 
+x = 1
+var.f = -> { x = x + 10; return x }
+var.a = var.f()
+var.b = var.f()
+var.r = "" + var.a + "," + var.b + "," + x
+// 对比第1次(解释)与热身后各值:JIT 下 f 内 STORE_SCOPE 直接写调用方作用域的 x,作用域隔离行为可能不同(需实测确认具体差异值)。
+--- EXPECT
+R1 OK 10.0,10.0,1.0 ##StringValue
+R2 OK 10.0,10.0,1.0 ##StringValue
+R3 OK 10.0,10.0,1.0 ##StringValue
+R4 OK 10.0,10.0,1.0 ##StringValue
+R5 OK 10.0,10.0,1.0 ##StringValue
+--- END
+
+### CASE 99 | SKIP | FINDING jit-20
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-20 [low] JIT STORE_VAR 不复制 NumberValue(解释器复制以防寄存器原地改),存在跨引擎别名隐患
+// 理论构造:JIT 函数 var.f = -> { var.saved = args[0] } 存入调用方寄存器中的 NumberValue,调用方后续解释执行的原地改值算术使 var.saved 漂移。未能给出确定性最小脚本,标注不确定。
+--- EXPECT
+--- END
+
+### CASE 100 | SKIP | FINDING jit-22
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING jit-22 [medium] JIT parity 测试覆盖缺口清单(风险面),含一个失效用例:mapForIn 用 val.m 导致程序不可编译,从
+// 修测试:把 AriaJitParity2Test 的 "val.m = {...}" 改为 "var.m = {...}" 后重跑,mapForIn 用例应立刻失败(暴露 jit-18)
+--- EXPECT
+--- END
+
+### CASE 101 | SKIP | FINDING gui-chain-1
+# CORPUS-ISSUE (A9P1 §5): non-Shimmer-legal form / placeholder / nondeterministic; not asserted
+--- SRC
+// FINDING gui-chain-1 [critical] 裸调用 range(1,3) 在 Aria 中解析为 none,for-in 循环静默 0 次迭代
+var.n = 0
+for (i in range(1, 3)) { var.n = var.n + 1 }
+// Shimmer: var.n > 0(正常遍历); Aria 1.1.16 实测: var.n == 0(range→none,循环静默跳过)
+// 对照: for (i in Range(1,3)) 与 for (i in 1..3) 在 Aria 可迭代
+--- EXPECT
+--- END
+
+### CASE 102 | PASS | FINDING gui-chain-9
+--- SRC
+// FINDING gui-chain-9 [low] 运行时错误信息丢失行号与源码片段,聊天栏/日志可诊断性下降
+var.x = [1,2][5]
+// Shimmer 聊天栏: 单元:[invoke] 运行时错误,位于第 1 行…请检查: var.x = [1,2][5] …
+// Aria: §c[Shimmer] 列表索引越界: 5 (size=2)(无行号无源码定位)
+--- EXPECT
+R1 ERR AriaRuntimeException: 列表索引越界: 5 (size=2) (line 2:9)
+R2 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R3 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R4 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+R5 ERR AriaRuntimeException: 列表索引越界: 5 (size=2)
+--- END
+
+### CASE 103 | PASS | FINDING gui-chain-10
+--- SRC
+// FINDING gui-chain-10 [low] [低置信/引擎级] Aria StringValue 数字解析加了首字符与长度守卫,带前导空格或 Infinity 类字
+var.a = " 5" + 1
+// Shimmer: 6.0(空白可解析); Aria(源码推断,未实测): " 51"(首字符空格→canBeNumber=false→拼接)
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END

@@ -64,7 +64,7 @@ public class SandboxEscapeTest {
     @Test void javaInteropAllowedByDefault() throws Exception {
         // 默认(allowJavaInterop=true)仍可用，确认闸门不误伤
         SandboxConfig ok = SandboxConfig.builder().maxInstructions(100000).build();
-        assertEquals(9.0, Aria.eval("val.M = use('java.lang.Math')\nreturn M.max(4,9)\n",
+        assertEquals(9.0, Aria.eval("M = use('java.lang.Math')\nreturn M.max(4,9)\n",
             Aria.createContext(), ok).numberValue(), 1e-9);
     }
 
@@ -91,7 +91,7 @@ public class SandboxEscapeTest {
 
     @Test void noSandboxJavaInteropWorks() throws Exception {
         // 无沙箱时 Java 互操作正常
-        assertEquals(9.0, Aria.eval("val.M = use('java.lang.Math')\nreturn M.max(4,9)\n",
+        assertEquals(9.0, Aria.eval("M = use('java.lang.Math')\nreturn M.max(4,9)\n",
             Aria.createContext()).numberValue(), 1e-9);
     }
 }

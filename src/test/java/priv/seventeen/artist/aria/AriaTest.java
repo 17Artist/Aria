@@ -96,7 +96,7 @@ public class AriaTest {
     }
 
     @Test
-    void testIDataArithmetic() {
+    void testIDataArithmetic() throws AriaException {
         NumberValue a = new NumberValue(10);
         NumberValue b = new NumberValue(3);
 
@@ -118,7 +118,7 @@ public class AriaTest {
     }
 
     @Test
-    void testIDataComparison() {
+    void testIDataComparison() throws AriaException {
         NumberValue a = new NumberValue(10);
         NumberValue b = new NumberValue(20);
 
@@ -130,7 +130,7 @@ public class AriaTest {
     }
 
     @Test
-    void testStringAddition() {
+    void testStringAddition() throws AriaException {
         StringValue hello = new StringValue("hello ");
         StringValue world = new StringValue("world");
         IValue<?> result = hello.add(world);
@@ -139,7 +139,7 @@ public class AriaTest {
     }
 
     @Test
-    void testStringNumberAdd() {
+    void testStringNumberAdd() throws AriaException {
         StringValue numStr = new StringValue("10");
         NumberValue num = new NumberValue(5);
         IValue<?> result = numStr.add(num);
@@ -215,7 +215,7 @@ public class AriaTest {
     }
 
     @Test
-    void testNoneArithmetic() {
+    void testNoneArithmetic() throws AriaException {
         IValue<?> result = NoneValue.NONE.add(new NumberValue(5));
         assertEquals(5.0, result.numberValue()); // None + x = x
     }

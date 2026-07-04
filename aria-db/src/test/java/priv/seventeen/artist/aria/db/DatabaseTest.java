@@ -65,7 +65,7 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
+            conn = db.connect('sqlite', global.dbPath)
             return type.typeof(conn)
             """, ctx);
         assertEquals("store", result.stringValue());
@@ -79,7 +79,7 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
+            conn = db.connect('sqlite', global.dbPath)
             db.execute(conn, 'CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, age INTEGER)')
             db.execute(conn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Alice', 25)
             db.execute(conn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Bob', 30)
@@ -95,8 +95,8 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.rows = db.execute(conn, 'SELECT * FROM users')
+            conn = db.connect('sqlite', global.dbPath)
+            rows = db.execute(conn, 'SELECT * FROM users')
             db.close(conn)
             return rows.size()
             """, ctx);
@@ -111,15 +111,15 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
+            conn = db.connect('sqlite', global.dbPath)
             db.insert(conn, 'users', {'name': 'Charlie', 'age': 35})
             db.close(conn)
             """, ctx);
 
         // 验证
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.rows = db.execute(conn, 'SELECT * FROM users WHERE name = ?', 'Charlie')
+            conn = db.connect('sqlite', global.dbPath)
+            rows = db.execute(conn, 'SELECT * FROM users WHERE name = ?', 'Charlie')
             db.close(conn)
             return rows.size()
             """, ctx);
@@ -134,8 +134,8 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.affected = db.update(conn, 'users', {'age': 26}, {'name': 'Alice'})
+            conn = db.connect('sqlite', global.dbPath)
+            affected = db.update(conn, 'users', {'age': 26}, {'name': 'Alice'})
             db.close(conn)
             return affected
             """, ctx);
@@ -150,8 +150,8 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.affected = db.delete(conn, 'users', {'name': 'Charlie'})
+            conn = db.connect('sqlite', global.dbPath)
+            affected = db.delete(conn, 'users', {'name': 'Charlie'})
             db.close(conn)
             return affected
             """, ctx);
@@ -165,18 +165,19 @@ public class DatabaseTest {
         ctx.getGlobalStorage().getGlobalVariable(VariableKey.of("dbPath")
         ).setValue(new StringValue(sqliteFile.toString()));
 
+        // Shimmer 对齐(R2)：lambda 体与外层 scope 隔离——事务回调内引用连接须经 var. 存储。
         eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            db.transaction(conn, -> {
-                db.execute(conn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Dave', 40)
-                db.execute(conn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Eve', 28)
+            var.txConn = db.connect('sqlite', global.dbPath)
+            db.transaction(var.txConn, -> {
+                db.execute(var.txConn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Dave', 40)
+                db.execute(var.txConn, 'INSERT INTO users (name, age) VALUES (?, ?)', 'Eve', 28)
             })
-            db.close(conn)
+            db.close(var.txConn)
             """, ctx);
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.rows = db.execute(conn, 'SELECT * FROM users')
+            conn = db.connect('sqlite', global.dbPath)
+            rows = db.execute(conn, 'SELECT * FROM users')
             db.close(conn)
             return rows.size()
             """, ctx);
@@ -191,8 +192,8 @@ public class DatabaseTest {
         ).setValue(new StringValue(sqliteFile.toString()));
 
         IValue<?> result = eval("""
-            var.conn = db.connect('sqlite', global.dbPath)
-            var.rows = db.select(conn, 'users', {'name': 'Alice'})
+            conn = db.connect('sqlite', global.dbPath)
+            rows = db.select(conn, 'users', {'name': 'Alice'})
             db.close(conn)
             return rows.size()
             """, ctx);
@@ -212,23 +213,23 @@ public class DatabaseTest {
 
 
             eval("""
-                var.conn = db.connect('mysql', 'localhost:3306/?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
+                conn = db.connect('mysql', 'localhost:3306/?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
                 db.execute(conn, 'CREATE DATABASE IF NOT EXISTS aria_test')
                 db.close(conn)
                 """, ctx);
 
 
             eval("""
-                var.conn = db.connect('mysql', 'localhost:3306/aria_test?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
+                conn = db.connect('mysql', 'localhost:3306/aria_test?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
                 db.execute(conn, 'CREATE TABLE IF NOT EXISTS aria_test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), score INT)')
                 db.execute(conn, 'DELETE FROM aria_test_table')
                 db.insert(conn, 'aria_test_table', {'name': 'Alice', 'score': 95})
                 db.insert(conn, 'aria_test_table', {'name': 'Bob', 'score': 87})
-                var.rows = db.select(conn, 'aria_test_table')
+                rows = db.select(conn, 'aria_test_table')
                 global.count = rows.size()
                 db.update(conn, 'aria_test_table', {'score': 100}, {'name': 'Alice'})
                 db.delete(conn, 'aria_test_table', {'name': 'Bob'})
-                var.afterDelete = db.select(conn, 'aria_test_table')
+                afterDelete = db.select(conn, 'aria_test_table')
                 global.afterDelete = afterDelete.size()
                 db.execute(conn, 'DROP TABLE IF EXISTS aria_test_table')
                 db.close(conn)
@@ -244,7 +245,7 @@ public class DatabaseTest {
 
 
             eval("""
-                var.conn = db.connect('mysql', 'localhost:3306/?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
+                conn = db.connect('mysql', 'localhost:3306/?useSSL=false&allowPublicKeyRetrieval=true', 'root', global.mysqlPwd)
                 db.execute(conn, 'DROP DATABASE IF EXISTS aria_test')
                 db.close(conn)
                 """, ctx);

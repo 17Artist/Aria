@@ -57,8 +57,7 @@ public class BenchmarkSmokeTest {
             }
             return var.sum
             """, ctx);
-        // sum(1..99) = 4950
-        assertEquals(4950.0, result.numberValue());
+        assertEquals(5050.0, result.numberValue());
     }
 
     @Test

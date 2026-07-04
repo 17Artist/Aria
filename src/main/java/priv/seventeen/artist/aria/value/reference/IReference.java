@@ -18,7 +18,7 @@ package priv.seventeen.artist.aria.value.reference;
 
 import priv.seventeen.artist.aria.value.IValue;
 
-public sealed interface IReference permits VariableReference, ValueReference, ClientReference, ServerReference {
+public sealed interface IReference permits VariableReference, ValueReference, ClientReference, ServerReference, ImmutableNoneReference {
     IValue<?> getValue();
     IValue<?> setValue(IValue<?> value);
     IValue<?> forceSetValue(IValue<?> value);

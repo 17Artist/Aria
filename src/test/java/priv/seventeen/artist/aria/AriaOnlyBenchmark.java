@@ -79,7 +79,7 @@ public class AriaOnlyBenchmark {
             for (var.i = 0; var.i < 100000; var.i += 1) {
                 var.s = var.s + 'a'
             }
-            return string.length(var.s)
+            return var.s.length()
             """);
         System.out.println("String Concat 100K:    " + fmt(t));
     }

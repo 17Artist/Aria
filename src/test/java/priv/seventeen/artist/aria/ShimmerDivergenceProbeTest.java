@@ -65,27 +65,27 @@ public class ShimmerDivergenceProbeTest {
         assertEquals("no", str("if (0 - 5) { 'yes' } else { 'no' }"));
     }
 
-    // ===== #1 range `..`：不再死循环，语义 = 半开 [start,end)（当前 Aria 设计）=====
+    // ===== #1 range `..`：不再死循环。Shimmer 对齐: operators-6/controlflow-01/02 —— 双端闭 [start,end] =====
     @Test void rangeOperatorNoLongerHangs() throws AriaException {
-        assertFalse(bool("7 ~~ 3..7"));  // 右开
+        assertTrue(bool("7 ~~ 3..7"));   // Shimmer 对齐: 右闭
         assertTrue(bool("5 ~~ 3..7"));
         assertTrue(bool("3 ~~ 3..7"));   // 左闭
     }
     @Test void rangeLiteralEqualsConstructor() throws AriaException {
-        // a..b 降解为 Range(a,b)，for-in 可遍历（半开 => 3,4,5,6 共 4 个）
-        assertEquals(4.0, num("var.c = 0\nfor (x in 3..7) { c = c + 1 }\nreturn c"), 1e-9);
+        // a..b 降解为 Range(a,b)，for-in 可遍历(Shimmer 对齐双端闭 => 3,4,5,6,7 共 5 个)
+        assertEquals(5.0, num("c = 0\nfor (x in 3..7) { c = c + 1 }\nreturn c"), 1e-9);
     }
 
     // ===== #3 list 越界：显式索引抛异常；for-in 仍正常遍历 =====
     @Test void listOutOfBoundsThrows() {
-        assertThrows(AriaException.class, () -> eval("var.l = [1,2,3]\nl[10]"));
-        assertThrows(AriaException.class, () -> eval("var.l = [1,2,3]\nl[0 - 1]"));
+        assertThrows(AriaException.class, () -> eval("l = [1,2,3]\nl[10]"));
+        assertThrows(AriaException.class, () -> eval("l = [1,2,3]\nl[0 - 1]"));
     }
     @Test void listForInStillWorksAfterOobFix() throws AriaException {
-        assertEquals(6.0, num("var.s = 0\nfor (x in [1,2,3]) { s = s + x }\nreturn s"), 1e-9);
+        assertEquals(6.0, num("s = 0\nfor (x in [1,2,3]) { s = s + x }\nreturn s"), 1e-9);
     }
     @Test void mapMissingKeyStillNone() throws AriaException {
-        assertTrue(eval("var.m = {\"a\":1}\nreturn m[\"nope\"]") instanceof NoneValue);
+        assertTrue(eval("m = {\"a\":1}\nreturn m[\"nope\"]") instanceof NoneValue);
     }
 
     // ===== #4 拼接串真值：MutableStringValue/RopeString 用 parseBoolean =====
@@ -107,13 +107,15 @@ public class ShimmerDivergenceProbeTest {
         assertEquals(0.0, num("5 % 0"), 1e-9);
     }
     @Test void noneSubtractionStaysAriaSemantics() throws AriaException {
-        // 未按 #8 复刻 Shimmer 怪行为：none-5 = -5（none 当 0），5-none = 5
-        assertEquals(-5.0, num("var.n - 5"), 1e-9);
+        // Shimmer 对齐(R4 + A9-P2 探针 probes7 实测)：`var.n - 5` 此前被语句级特化分支拆成两条语句
+        // (`var.n` / `- 5`)偶然得 -5；R4 修复后整行按二元表达式求值——Shimmer 实测 none-5 = 5.0
+        // (NoneValue.subValue 值模型)、5-none = 5.0，两侧一致。
+        assertEquals(5.0, num("var.n - 5"), 1e-9);
         assertEquals(5.0, num("5 - var.n"), 1e-9);
     }
     @Test void boolPlusNumericStringStaysAriaSemantics() throws AriaException {
-        // 未按 #9 复刻 Shimmer 漏 return bug：true + "123" = 124
-        assertEquals(124.0, num("true + \"123\""), 1e-9);
+        // Shimmer 对齐: operators-7 —— 复刻 Shimmer 漏 return bug: true + "123" = "true123"
+        assertEquals("true123", str("true + \"123\""));
     }
 
     // ===== 括号吞掉(用户要求)：非函数值加括号 → 吞掉括号返回原值 =====
@@ -124,14 +126,14 @@ public class ShimmerDivergenceProbeTest {
     }
     @Test void parenSwallowOnMember() throws AriaException {
         // obj.field() 中 field 非函数 → 吞掉括号返回 obj.field（用户的 xxx.xxVariable() 场景）
-        assertEquals(7.0, num("class Box { var.v = 7 }\nvar.b = Box()\nreturn b.v()"), 1e-9);
-        assertTrue(bool("class Box { var.v = 7 }\nvar.b = Box()\nreturn b.v() == b.v"));
+        assertEquals(7.0, num("class Box { var.v = 7 }\nb = Box()\nreturn b.v()"), 1e-9);
+        assertTrue(bool("class Box { var.v = 7 }\nb = Box()\nreturn b.v() == b.v"));
     }
 
     // ===== 字符串 == 内容比较(确认已是内容比,非引用比) =====
     @Test void stringEqualityIsContentBased() throws AriaException {
         assertTrue(bool("\"a\" + \"b\" == \"ab\""));
-        assertTrue(bool("var.x = \"ab\"\nvar.y = \"a\" + \"b\"\nreturn x == y"));
+        assertTrue(bool("x = \"ab\"\ny = \"a\" + \"b\"\nreturn x == y"));
         assertEquals(2.0, num("switch (\"b\") { case \"a\" { return 1 } case \"b\" { return 2 } }"), 1e-9);
     }
 }

@@ -41,7 +41,7 @@ public class CrossValidationTest {
         // Way 1: 直接表达式
         IValue<?> r1 = eval("return 2 + 3 * 4 - 1");
         // Way 2: 分步变量计算
-        IValue<?> r2 = eval("var.a = 3 * 4\nvar.b = 2 + a\nreturn b - 1");
+        IValue<?> r2 = eval("a = 3 * 4\nb = 2 + a\nreturn b - 1");
         assertEquals(r1.numberValue(), r2.numberValue());
         assertEquals(13.0, r1.numberValue());
     }
@@ -60,11 +60,11 @@ public class CrossValidationTest {
             var.a = 0
             var.b = 1
             for (var.i = 0; var.i < 20; var.i += 1) {
-                var.temp = b
-                var.b = a + b
-                var.a = temp
+                var.temp = var.b
+                var.b = var.a + var.b
+                var.a = var.temp
             }
-            return a
+            return var.a
             """);
         assertEquals(r1.numberValue(), r2.numberValue());
         assertEquals(6765.0, r1.numberValue());
@@ -77,9 +77,9 @@ public class CrossValidationTest {
         // Way 1: + 运算符
         IValue<?> r1 = eval("return 'hello' + ' ' + 'world'");
         // Way 2: 字符串插值
-        IValue<?> r2 = eval("var.w = 'world'\nreturn \"hello {w}\"");
+        IValue<?> r2 = eval("w = 'world'\nreturn \"hello {w}\"");
         // Way 3: 变量累加
-        IValue<?> r3 = eval("var.s = 'hello'\nvar.s = s + ' '\nvar.s = s + 'world'\nreturn s");
+        IValue<?> r3 = eval("s = 'hello'\ns = s + ' '\ns = s + 'world'\nreturn s");
         assertEquals(r1.stringValue(), r2.stringValue());
         assertEquals(r1.stringValue(), r3.stringValue());
         assertEquals("hello world", r1.stringValue());
@@ -93,12 +93,12 @@ public class CrossValidationTest {
         IValue<?> r1 = eval("""
             var.list = [10, 20, 30, 40, 50]
             var.sum = 0
-            for (item in list) { var.sum += item }
-            return sum
+            for (item in var.list) { var.sum += item }
+            return var.sum
             """);
         // Way 2: reduce
         IValue<?> r2 = eval("""
-            val.list = [10, 20, 30, 40, 50]
+            list = [10, 20, 30, 40, 50]
             return list.reduce(-> { return args[0] + args[1] }, 0)
             """);
         assertEquals(r1.numberValue(), r2.numberValue());
@@ -117,12 +117,12 @@ public class CrossValidationTest {
                 new = -> { self.x = args[0]; self.y = args[1] }
                 sum = -> { return self.x + self.y }
             }
-            val.p = Point(3, 4)
+            p = Point(3, 4)
             return p.sum()
             """);
         // Way 2: map 作为对象
         IValue<?> r2 = eval("""
-            val.p = {'x': 3, 'y': 4}
+            p = {'x': 3, 'y': 4}
             return p['x'] + p['y']
             """);
         assertEquals(r1.numberValue(), r2.numberValue());
@@ -136,10 +136,10 @@ public class CrossValidationTest {
         // Way 1: 闭包捕获变量
         IValue<?> r1 = eval("""
             var.makeCounter = -> {
-                var.count = 0
+                count = 0
                 return -> { count = count + 1; return count }
             }
-            val.c = makeCounter()
+            c = makeCounter()
             c()
             c()
             return c()
@@ -150,13 +150,15 @@ public class CrossValidationTest {
                 var.count = 0
                 inc = -> { self.count = self.count + 1; return self.count }
             }
-            val.c = Counter()
+            c = Counter()
             c.inc()
             c.inc()
             return c.inc()
             """);
-        assertEquals(r1.numberValue(), r2.numberValue());
-        assertEquals(3.0, r1.numberValue());
+        // Shimmer 对齐(R2)：lambda 体隔离——闭包计数器体内 count 每次从 none 起步，c() 恒 1；
+        // 类计数器(self.count 实例字段,Aria 扩展)不受影响仍为 3。两路语义因此分化。
+        assertEquals(1.0, r1.numberValue());
+        assertEquals(3.0, r2.numberValue());
     }
 
     //  7. 控制流交叉验证
@@ -171,7 +173,7 @@ public class CrossValidationTest {
                 elif (var.i % 3 == 1) { var.count += 2 }
                 else { var.count += 3 }
             }
-            return count
+            return var.count
             """);
         // Way 2: match（不穿透）
         IValue<?> r2 = eval("""
@@ -183,7 +185,7 @@ public class CrossValidationTest {
                     case 2 { var.count += 3 }
                 }
             }
-            return count
+            return var.count
             """);
         assertEquals(r1.numberValue(), r2.numberValue());
         // 0..99: 34 个 mod=0, 33 个 mod=1, 33 个 mod=2 → 34*1 + 33*2 + 33*3 = 199
@@ -210,9 +212,9 @@ public class CrossValidationTest {
     @Test
     void testIncrementTwoWays() throws AriaException {
         // Way 1: 前缀 ++
-        IValue<?> r1 = eval("var.x = 5\n++var.x\n++var.x\nreturn x");
+        IValue<?> r1 = eval("var.x = 5\n++var.x\n++var.x\nreturn var.x");
         // Way 2: += 1
-        IValue<?> r2 = eval("var.x = 5\nvar.x += 1\nvar.x += 1\nreturn x");
+        IValue<?> r2 = eval("var.x = 5\nvar.x += 1\nvar.x += 1\nreturn var.x");
         assertEquals(r1.numberValue(), r2.numberValue());
         assertEquals(7.0, r1.numberValue());
     }
@@ -222,10 +224,10 @@ public class CrossValidationTest {
     @Test
     void testMapTwoWays() throws AriaException {
         // Way 1: 字面量 + 索引访问
-        IValue<?> r1 = eval("val.m = {'a': 1, 'b': 2, 'c': 3}\nreturn m['a'] + m['b'] + m['c']");
+        IValue<?> r1 = eval("m = {'a': 1, 'b': 2, 'c': 3}\nreturn m['a'] + m['b'] + m['c']");
         // Way 2: 逐步构建 map + dot 访问
         IValue<?> r2 = eval("""
-            val.m = {'a': 0, 'b': 0, 'c': 0}
+            m = {'a': 0, 'b': 0, 'c': 0}
             m['a'] = 1
             m['b'] = 2
             m['c'] = 3
@@ -247,7 +249,7 @@ public class CrossValidationTest {
             } catch (e) {
                 var.result = e
             }
-            return result
+            return var.result
             """);
         // Way 2: catch 不带变量
         IValue<?> r2 = eval("""
@@ -257,7 +259,7 @@ public class CrossValidationTest {
             } catch {
                 var.result = 'caught'
             }
-            return result
+            return var.result
             """);
         assertEquals("error", r1.stringValue());
         assertEquals("caught", r2.stringValue());

@@ -52,7 +52,7 @@ public class ServiceTest {
         ).setValue(new StringValue("{\"name\":\"Alice\",\"age\":30}"));
         IValue<?> result = Aria.eval("""
             var.obj = json.parse(global.jsonStr)
-            return obj.name
+            return var.obj.name
             """, ctx);
         assertEquals("Alice", result.stringValue());
     }
@@ -73,8 +73,8 @@ public class ServiceTest {
     @Test
     void testJsonStringifyMap() throws AriaException {
         IValue<?> result = eval("""
-            val.m = {'key': 'value'}
-            val.str = json.stringify(m)
+            m = {'key': 'value'}
+            str = json.stringify(m)
             return type.isString(str)
             """);
         assertTrue(result.booleanValue());
@@ -88,7 +88,7 @@ public class ServiceTest {
         ).setValue(new StringValue("{\"letter\":\"\\u0041\"}"));
         IValue<?> result = Aria.eval("""
             var.obj = json.parse(global.jsonStr)
-            return obj.letter
+            return var.obj.letter
             """, ctx);
         assertEquals("A", result.stringValue());
     }
@@ -127,7 +127,8 @@ public class ServiceTest {
         String filePath = tempDir.resolve("append.txt").toString().replace("\\", "/");
         Context ctx = Aria.createContext();
         Aria.eval("fs.write('" + filePath + "', 'line1')\n", ctx);
-        Aria.eval("fs.append('" + filePath + "', '\\nline2')\n", ctx);
+        // syntax-05：转义不展开——真实换行改用三引号文本块表达
+        Aria.eval("fs.append('" + filePath + "', \"\"\"\nline2\"\"\")\n", ctx);
         IValue<?> result = Aria.eval("return fs.read('" + filePath + "')\n", ctx);
         assertEquals("line1\nline2", result.stringValue());
     }
@@ -136,7 +137,8 @@ public class ServiceTest {
     void testFsReadLines() throws AriaException {
         String filePath = tempDir.resolve("lines.txt").toString().replace("\\", "/");
         Context ctx = Aria.createContext();
-        Aria.eval("fs.write('" + filePath + "', 'a\\nb\\nc')\n", ctx);
+        // syntax-05：转义不展开——真实换行改用三引号文本块表达
+        Aria.eval("fs.write('" + filePath + "', \"\"\"a\nb\nc\"\"\")\n", ctx);
         IValue<?> result = Aria.eval("return fs.readLines('" + filePath + "')\n", ctx);
         assertInstanceOf(ListValue.class, result);
         assertEquals(3.0, eval("return " + ((ListValue) result).jvmValue().size() + "\n").numberValue());
@@ -208,10 +210,10 @@ public class ServiceTest {
     @Test
     void testSerialEncodeDecodeRoundtrip() throws AriaException {
         IValue<?> result = eval("""
-            val.data = {'key': 'value', 'num': 42}
-            val.encoded = serial.encode(data)
+            data = {'key': 'value', 'num': 42}
+            encoded = serial.encode(data)
             var.decoded = serial.decode(encoded)
-            return decoded.key
+            return var.decoded.key
             """);
         assertEquals("value", result.stringValue());
     }
@@ -221,8 +223,8 @@ public class ServiceTest {
     @Test
     void testUUIDConstructorCreatesValidUUID() throws AriaException {
         IValue<?> result = eval("""
-            val.id = UUID()
-            val.str = type.toString(id)
+            id = UUID()
+            str = type.toString(id)
             return str.length()
             """);
         // UUID 格式: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx = 36 字符
@@ -232,7 +234,7 @@ public class ServiceTest {
     @Test
     void testUUIDConstructorParsesString() throws AriaException {
         IValue<?> result = eval("""
-            val.id = UUID('550e8400-e29b-41d4-a716-446655440000')
+            id = UUID('550e8400-e29b-41d4-a716-446655440000')
             return type.toString(id)
             """);
         assertEquals("550e8400-e29b-41d4-a716-446655440000", result.stringValue());
@@ -243,7 +245,7 @@ public class ServiceTest {
     @Test
     void testStringRepeat() throws AriaException {
         IValue<?> result = eval("""
-            val.s = 'ha'
+            s = 'ha'
             return s.repeat(3)
             """);
         assertEquals("hahaha", result.stringValue());

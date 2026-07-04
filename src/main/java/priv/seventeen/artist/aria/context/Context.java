@@ -109,14 +109,15 @@ public class Context {
         return new Context(globalStorage, localStorage, new ScopeStack());
     }
 
+    /**
+     * Shimmer 对齐(R2, BlockStatement.execute0)：lambda(-> {})体与定义处 scope 完全隔离——
+     * Shimmer 的 FunctionCallable 调用时新建 Context(共享 GlobalStorage/LocalStorage,全新 ScopeStack)，
+     * 体内裸名变量从 none 起步、写不透外层(实测 `x=1; f=->{x=x+10; return x}; f(); f(); return x` → 10,10,1)。
+     * 因此"闭包快照"不再导入外层 scope 绑定：只共享 var/val(localStorage)、global/server/client
+     * (globalStorage)与 self/args。三条 NEW_FUNCTION 路径(解释器两循环+JIT 生成码)共用本方法。
+     */
     public Context snapshotForClosure() {
-        ScopeStack snapshotScope = new ScopeStack();
-        HashMap<VariableKey, VariableReference> snap = this.scopeStack.snapshot();
-        if (!snap.isEmpty()) {
-            snapshotScope.push();
-            snapshotScope.importAll(snap);
-        }
-        Context ctx = new Context(globalStorage, localStorage, snapshotScope);
+        Context ctx = new Context(globalStorage, localStorage, new ScopeStack());
         ctx.self = this.self;
         ctx.args = this.args;
         return ctx;
@@ -143,6 +144,19 @@ public class Context {
 
     public Context createLightCallContext(IValue<?> self, IValue<?>[] args) {
         Context ctx = new Context(globalStorage, localStorage, new ScopeStack());
+        ctx.self = self;
+        ctx.args = args != null ? args : EMPTY_ARGS;
+        return ctx;
+    }
+
+    /**
+     * 共享调用上下文(Shimmer 对齐, variables-6, 对照 Shimmer {@code Context(context, self, args)} 构造)：
+     * <b>复用调用方同一 ScopeStack</b>(以及同一 local/global storage)，仅替换 self/args——
+     * 被调脚本对裸名临时变量的读写与调用方完全互通。供 i-Common AttributeCallable 等宿主回调
+     * 恢复"跨 action 裸名变量共享"语义使用(A8)。与 {@link #createCallContext}(快照隔离)相对。
+     */
+    public Context createSharedCallContext(IValue<?> self, IValue<?>[] args) {
+        Context ctx = new Context(globalStorage, localStorage, this.scopeStack);
         ctx.self = self;
         ctx.args = args != null ? args : EMPTY_ARGS;
         return ctx;

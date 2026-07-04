@@ -20,9 +20,11 @@ import priv.seventeen.artist.aria.value.Variable;
 
 public interface IAriaObject {
     String getTypeName();
+    // Shimmer 对齐(operators-10/interop-7/gui-chain-6/7, IShimmerObject 默认值):
+    // numberValue=0 / stringValue="" / booleanValue=false。
     default double numberValue() { return 0; }
-    default String stringValue() { return getTypeName(); }
-    default boolean booleanValue() { return true; }
+    default String stringValue() { return ""; }
+    default boolean booleanValue() { return false; }
     default boolean canMath() { return false; }
     default Variable getVariable(String name) { return Variable.Normal.NONE; }
     default Variable getElement(String name) { return Variable.Normal.NONE; }

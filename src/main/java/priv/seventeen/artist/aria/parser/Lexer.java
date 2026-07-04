@@ -119,6 +119,22 @@ public class Lexer {
     public int getLine() { return line; }
     public int getColumn() { return column; }
 
+    /**
+     * 记录当前词法位置(供解析器语句级回退,F4/R4)。peek() 不前移 pos,故无论是否有
+     * 待取的 peeked token,返回的都是"下一个未消费 token 的起点"。
+     */
+    public int[] mark() {
+        return new int[]{ pos, line, column };
+    }
+
+    /** 回退到 mark() 记录的位置并清空 peek 缓存(F4/R4)。 */
+    public void reset(int[] mark) {
+        this.pos = mark[0];
+        this.line = mark[1];
+        this.column = mark[2];
+        this.peeked = null;
+    }
+
 
     private Token readToken() throws CompileException {
 
@@ -393,25 +409,21 @@ public class Lexer {
         throw new CompileException("未闭合的三引号文本块", startLine, startCol);
     }
 
+    /**
+     * Shimmer 对齐(syntax-05)：字符串字面量<b>不展开转义</b>——值保留引号内原文。
+     * Shimmer 词法的转义白名单仅用于"反斜杠+后随字符不结束字符串"的扫描判定，
+     * 值取 substring 原文（如 {@code 'a\nb'} 是 4 个字符 a \ n b；{@code 'a\'b'} 是
+     * a \ ' b 且 {@code \'} 不终止字符串）。此处照抄：消费反斜杠+后随字符、原样进值。
+     * 未知转义保持宽容（Aria 自由区，Shimmer 是编译错），串尾裸反斜杠原样保留。
+     */
     private String readEscapeSequence() {
         advance(); // 跳过 '\'
         if (pos >= length) {
-            return "\\"; // Shimmer 对齐：串尾裸反斜杠原样保留，不抛异常
+            return "\\";
         }
         char c = current();
         advance();
-        return switch (c) {
-            case 'n'  -> "\n";
-            case 't'  -> "\t";
-            case 'r'  -> "\r";
-            case 'b'  -> "\b";
-            case 'f'  -> "\f";
-            case '\\' -> "\\";
-            case '\'' -> "'";
-            case '"'  -> "\"";
-            // Shimmer 对齐：未知转义宽容——保留反斜杠+原字符(如 \c -> "\c")，不抛 CompileException
-            default   -> "\\" + c;
-        };
+        return "\\" + c;
     }
 
     private Token readIdentifierOrKeyword() {

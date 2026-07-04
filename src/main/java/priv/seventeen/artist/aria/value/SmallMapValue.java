@@ -69,8 +69,8 @@ public final class SmallMapValue extends IValue<java.util.Map<IValue<?>, IValue<
         }
         // 容量耗尽：升级到 MapValue
         Map<IValue<?>, IValue<?>> map = new LinkedHashMap<>(size * 2 + 2);
-        for (int i = 0; i < size; i++) map.put(new StringValue(keys[i], true), values[i]);
-        map.put(new StringValue(key, true), val);
+        for (int i = 0; i < size; i++) map.put(new StringValue(keys[i]), values[i]);
+        map.put(new StringValue(key), val);
         return new MapValue(map);
     }
 
@@ -79,7 +79,7 @@ public final class SmallMapValue extends IValue<java.util.Map<IValue<?>, IValue<
     @Override
     public Map<IValue<?>, IValue<?>> jvmValue() {
         Map<IValue<?>, IValue<?>> map = new LinkedHashMap<>(size * 2);
-        for (int i = 0; i < size; i++) map.put(new StringValue(keys[i], true), values[i]);
+        for (int i = 0; i < size; i++) map.put(new StringValue(keys[i]), values[i]);
         return map;
     }
 
@@ -89,12 +89,13 @@ public final class SmallMapValue extends IValue<java.util.Map<IValue<?>, IValue<
     @Override public int typeID() { return 5; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return false; }
+    @Override public String typeName() { return "map"; }
 
     @Override
     protected IValue<?> addValue(IValue<?> other) {
         if (other instanceof SmallMapValue sm) {
             java.util.Map<IValue<?>, IValue<?>> merged = jvmValue();
-            for (int i = 0; i < sm.size; i++) merged.put(new StringValue(sm.keys[i], true), sm.values[i]);
+            for (int i = 0; i < sm.size; i++) merged.put(new StringValue(sm.keys[i]), sm.values[i]);
             return new MapValue(merged);
         }
         if (other instanceof MapValue mv) {

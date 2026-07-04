@@ -45,8 +45,10 @@ public class EventBus {
         String event = data.get(0).stringValue();
         IValue<?> handler = data.get(1);
         if (handler instanceof StoreOnlyValue<?> sv && sv.jvmValue() instanceof CallableWithInvoker cwi) {
+            // Shimmer 对齐(interop-4)：包一层走 cwi.invoke 虚方法——直接存 getCallable() 会绕过
+            // AttributeCallable 覆写(丢 self 上下文)。
             listeners.computeIfAbsent(event, k -> new CopyOnWriteArrayList<>())
-                .add(cwi.getCallable());
+                .add(d -> cwi.invoke(d.getContext(), d.getArgs()));
         } else if (handler instanceof FunctionValue fv) {
             listeners.computeIfAbsent(event, k -> new CopyOnWriteArrayList<>())
                 .add(fv.getCallable());

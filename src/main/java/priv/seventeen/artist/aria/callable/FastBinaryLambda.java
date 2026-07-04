@@ -36,6 +36,7 @@ public final class FastBinaryLambda implements ICallable {
             case SUB -> a - b;
             case MUL -> a * b;
             case DIV -> b != 0 ? a / b : 0;
+            case MOD -> b != 0 ? a % b : 0; // A4(jit-13)：对照 IData.mod，模零=0
             default -> 0;
         };
     }
@@ -50,6 +51,7 @@ public final class FastBinaryLambda implements ICallable {
                 case SUB -> na.value - nb.value;
                 case MUL -> na.value * nb.value;
                 case DIV -> nb.value != 0 ? na.value / nb.value : 0;
+                case MOD -> nb.value != 0 ? na.value % nb.value : 0; // A4(jit-13)
                 default -> 0;
             });
         }
@@ -58,6 +60,7 @@ public final class FastBinaryLambda implements ICallable {
             case SUB -> a.sub(b);
             case MUL -> a.mul(b);
             case DIV -> a.div(b);
+            case MOD -> a.mod(b); // A4(jit-13)
             default -> NoneValue.NONE;
         };
     }

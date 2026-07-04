@@ -1,0 +1,350 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases2.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | PASS
+--- SRC
+return "a{7}b"
+--- EXPECT
+R1 OK a7.0b ##StringValue
+R2 OK a7.0b ##StringValue
+R3 OK a7.0b ##StringValue
+R4 OK a7.0b ##StringValue
+R5 OK a7.0b ##StringValue
+--- END
+
+### CASE 2 | PASS
+--- SRC
+return "{7}b"
+--- EXPECT
+R1 OK 7.0b ##StringValue
+R2 OK 7.0b ##StringValue
+R3 OK 7.0b ##StringValue
+R4 OK 7.0b ##StringValue
+R5 OK 7.0b ##StringValue
+--- END
+
+### CASE 3 | PASS
+--- SRC
+return "a{7}"
+--- EXPECT
+R1 OK a7.0 ##StringValue
+R2 OK a7.0 ##StringValue
+R3 OK a7.0 ##StringValue
+R4 OK a7.0 ##StringValue
+R5 OK a7.0 ##StringValue
+--- END
+
+### CASE 4 | PASS
+--- SRC
+x = 3
+return "a{x}b"
+--- EXPECT
+R1 OK a3.0b ##StringValue
+R2 OK a3.0b ##StringValue
+R3 OK a3.0b ##StringValue
+R4 OK a3.0b ##StringValue
+R5 OK a3.0b ##StringValue
+--- END
+
+### CASE 5 | PASS
+--- SRC
+return "a{1+1}b{2+2}c"
+--- EXPECT
+R1 OK a2.0b4.0c ##StringValue
+R2 OK a2.0b4.0c ##StringValue
+R3 OK a2.0b4.0c ##StringValue
+R4 OK a2.0b4.0c ##StringValue
+R5 OK a2.0b4.0c ##StringValue
+--- END
+
+### CASE 6 | PASS
+--- SRC
+return "{'q'}tail"
+--- EXPECT
+R1 OK qtail ##StringValue
+R2 OK qtail ##StringValue
+R3 OK qtail ##StringValue
+R4 OK qtail ##StringValue
+R5 OK qtail ##StringValue
+--- END
+
+### CASE 7 | PASS
+--- SRC
+s = 0
+while (s < 5) {
+s = s + 2
+break
+}
+return s
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 8 | PASS
+--- SRC
+s = 0
+while (s < 5) {
+s = s + 2
+if (s > 3) {
+break
+}
+}
+return s
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 9 | PASS
+--- SRC
+s = 0
+for (i in [1,2,3]) {
+if (i == 2) {
+break
+}
+s = s + i
+}
+return s
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 10 | PASS
+--- SRC
+f = -> {
+return 7
+}
+return f()
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 11 | PASS
+--- SRC
+return 1 ~~ [1,3]
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 12 | PASS
+--- SRC
+return 2 ~~ [1,2,3]
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 13 | PASS
+--- SRC
+return 2 ~~ range(1,3)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 14 | PASS
+--- SRC
+return 'a' ~~ ['a','b']
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 15 | PASS
+--- SRC
+return 5
++ 4
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 16 | PASS
+--- SRC
+a = 1
++ 2
+c = 3
+return c
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 17 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: x = (1 | )
+--- SRC
+x = (1
++ 2)
+return x
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 18 | PASS
+--- SRC
+return 'abc'
+.length()
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 19 | PASS
+--- SRC
+x = true
+? 1 : 2
+return x
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 20 | PASS
+--- SRC
+x = true ?
+1 : 2
+return x
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 21 | PASS
+--- SRC
+return true
+&& false
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 22 | PASS
+--- SRC
+return true
+|| false
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 23 | PASS
+--- SRC
+a
+= 5
+return a
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 24 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: m.in = 5 | )
+--- SRC
+m = {}
+m.in = 5
+return m.in
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 25 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 1 列 | 请检查: return 5} | )
+--- SRC
+if(true){
+return 5}
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 26 | PASS
+--- SRC
+x = 1
+x =
+5
+return x
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 27 | PASS
+--- SRC
+return "x{1+1}y"
+--- EXPECT
+R1 OK x2.0y ##StringValue
+R2 OK x2.0y ##StringValue
+R3 OK x2.0y ##StringValue
+R4 OK x2.0y ##StringValue
+R5 OK x2.0y ##StringValue
+--- END

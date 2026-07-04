@@ -43,10 +43,14 @@ public class AriaCompilationUnit {
             Interpreter interpreter = new Interpreter();
             Result result = interpreter.execute(program, context);
             return result.getValue();
+        } catch (AriaRuntimeException e) {
+            throw AriaCompiledRoutine.enrichRuntimeError(name, tracker, e);
         } catch (AriaException e) {
             throw e;
         } catch (Exception e) {
-            throw new AriaRuntimeException("Execution error in '" + name + "': " + e.getMessage(), e);
+            throw new AriaRuntimeException(
+                    AriaCompiledRoutine.runtimeErrorMessage(name, tracker, -1, -1,
+                            e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()), e);
         }
     }
 
@@ -54,4 +58,12 @@ public class AriaCompilationUnit {
     public IRProgram getProgram() { return program; }
     public Context getContext() { return context; }
     public ContentTracker getTracker() { return tracker; }
+
+    private java.util.List<String> warnings = java.util.Collections.emptyList();
+
+    public void setWarnings(java.util.List<String> warnings) {
+        this.warnings = warnings != null ? warnings : java.util.Collections.emptyList();
+    }
+
+    public java.util.List<String> getWarnings() { return warnings; }
 }

@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 public final class NumberValue extends IValue<Double> {
 
     private static final Double ZERO = 0.0;
@@ -58,18 +60,48 @@ public final class NumberValue extends IValue<Double> {
     @Override public boolean canMath() { return true; }
     @Override public boolean isBaseType() { return true; }
 
+    /** Shimmer 对齐(NumberValue.nc()):一元负号。 */
+    public NumberValue nc() { return new NumberValue(-value); }
+
+    // Shimmer 对齐(NumberValue.addValue 逐行):数字/可数串数值相加;不可数串拼接;
+    // 其余 canMath(boolean/none/可数对象)数值相加;canMath=false(list/map/StoreOnly 等)抛异常(operators-8)。
     @Override
-    protected IValue<?> addValue(IValue<?> other) {
-        if (other instanceof StringValue sv && !sv.canBeNumber()) {
-            return new StringValue(this.stringValue() + sv.stringValue());
+    protected IValue<?> addValue(IValue<?> other) throws AriaRuntimeException {
+        if (other instanceof NumberValue nv) {
+            return new NumberValue(this.value + nv.numberValue());
         }
-        return new NumberValue(this.value + other.numberValue());
+        if (other instanceof StringValue sv) {
+            if (sv.canBeNumber()) {
+                return new NumberValue(this.value + sv.numberValue());
+            }
+            return new StringValue(this.value + sv.jvmValue());
+        }
+        if (other.canMath()) {
+            return new NumberValue(this.value + other.numberValue());
+        }
+        throw new AriaRuntimeException(typeName() + " 类型不支持与 " + other.typeName() + " 类型进行加法运算");
+    }
+
+    // Shimmer 对齐(NumberValue.subValue 逐行):不可数串 → String.valueOf(value).replace(str,"")(operators-9)。
+    @Override
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
+        if (other instanceof NumberValue nv) {
+            return new NumberValue(this.value - nv.numberValue());
+        }
+        if (other instanceof StringValue sv) {
+            if (sv.canBeNumber()) {
+                return new NumberValue(this.value - sv.numberValue());
+            }
+            return new StringValue(String.valueOf(this.value).replace(sv.jvmValue(), ""));
+        }
+        if (other.canMath()) {
+            return new NumberValue(this.value - other.numberValue());
+        }
+        throw new AriaRuntimeException(typeName() + " 类型不支持与 " + other.typeName() + " 类型进行减法运算");
     }
 
     @Override
-    protected IValue<?> subValue(IValue<?> other) {
-        return new NumberValue(this.value - other.numberValue());
-    }
+    public String typeName() { return "number"; }
 
     @Override
     public String toString() { return stringValue(); }

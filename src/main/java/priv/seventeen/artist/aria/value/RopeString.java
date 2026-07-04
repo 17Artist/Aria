@@ -16,6 +16,8 @@
 
 package priv.seventeen.artist.aria.value;
 
+import priv.seventeen.artist.aria.exception.AriaRuntimeException;
+
 /**
  * 不可变 rope 字符串：内部为二叉树（leaf 持有 flat 字符串，internal 持有 left/right 子树）。
  * concat 是 O(1)（不复制内容），首次 stringValue() 时才 flatten 成扁平 String 并缓存，
@@ -83,6 +85,7 @@ public final class RopeString extends IValue<String> {
     @Override public int typeID() { return 3; }
     @Override public boolean canMath() { return false; }
     @Override public boolean isBaseType() { return true; }
+    @Override public String typeName() { return "string"; }
 
     public int length() { return length; }
 
@@ -94,8 +97,8 @@ public final class RopeString extends IValue<String> {
     }
 
     @Override
-    protected IValue<?> subValue(IValue<?> other) {
-        return new StringValue(stringValue(), true).sub(other);
+    protected IValue<?> subValue(IValue<?> other) throws AriaRuntimeException {
+        return new StringValue(stringValue()).sub(other);
     }
 
 

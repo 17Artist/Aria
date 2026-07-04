@@ -42,7 +42,7 @@ public class PromiseFunctions {
         manager.registerStaticFunction("Promise", "all", data -> {
             IValue<?> arg = data.get(0);
             if (!(arg instanceof ListValue lv)) {
-                return PromiseValue.rejected(new StringValue("Promise.all: expected list", true));
+                return PromiseValue.rejected(new StringValue("Promise.all: expected list"));
             }
             List<IValue<?>> items = lv.jvmValue();
             CompletableFuture<?>[] futures = new CompletableFuture<?>[items.size()];
@@ -91,7 +91,7 @@ public class PromiseFunctions {
     private static IValue<?> promiseThen(InvocationData data) {
         PromiseValue p = (PromiseValue) data.get(0);
         if (!(data.get(1) instanceof FunctionValue fn)) {
-            return PromiseValue.rejected(new StringValue("then: callback must be a function", true));
+            return PromiseValue.rejected(new StringValue("then: callback must be a function"));
         }
         // 在 Promise 解析后，在线程池上调用回调；回调若返回 Promise 则平铺为链
         CompletableFuture<IValue<?>> next = p.getFuture().thenApplyAsync(v -> {
@@ -119,7 +119,7 @@ public class PromiseFunctions {
             if (cause instanceof PromiseValue.PromiseRejection pr) {
                 reason = pr.getReason();
             } else {
-                reason = new StringValue(cause.getMessage() != null ? cause.getMessage() : "error", true);
+                reason = new StringValue(cause.getMessage() != null ? cause.getMessage() : "error");
             }
             IValue<?> r = invokeCallback(fn, reason);
             return r != null ? r : NoneValue.NONE;

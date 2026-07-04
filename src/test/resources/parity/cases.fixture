@@ -1,0 +1,1214 @@
+# ShimmerParityCorpus fixture — generated from A9-P2 dual-jar diff recording
+# (compare5_report.json, Shimmer-1.56.58 vs Aria workspace A1-A5+A9P2, 5 rounds,
+#  JIT_THRESHOLD=1: R1 interpreted / R2-R5 JIT). Source corpus: scratchpad/parity/cases.txt
+# PASS: expected values = measured Shimmer-side outputs (== Aria side, machine-verified).
+# EXPECTED: Aria free-zone; expected values = measured Aria-side outputs (anti-drift pin).
+# SKIP: corpus issue (invalid Shimmer form etc.); executed for state parity, not asserted.
+
+### CASE 1 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 1..5 | )
+--- SRC
+return 1..5
+--- EXPECT
+R1 OK [range:1.0-5.0] ##ObjectValue
+R2 OK [range:1.0-5.0] ##ObjectValue
+R3 OK [range:1.0-5.0] ##ObjectValue
+R4 OK [range:1.0-5.0] ##ObjectValue
+R5 OK [range:1.0-5.0] ##ObjectValue
+--- END
+
+### CASE 2 | PASS
+--- SRC
+match = 5
+return match
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 3 | PASS
+--- SRC
+from = 1
+return from
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 4 | PASS
+--- SRC
+as = 2
+return as
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 5 | PASS
+--- SRC
+class = 3
+return class
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 6 | PASS
+--- SRC
+await = 4
+return await
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 7 | PASS
+--- SRC
+instanceof = 5
+return instanceof
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 8 | PASS
+--- SRC
+try = 6
+return try
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 9 | PASS
+--- SRC
+throw = 7
+return throw
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 10 | PASS
+--- SRC
+import = 8
+return import
+--- EXPECT
+R1 OK 8.0 ##NumberValue
+R2 OK 8.0 ##NumberValue
+R3 OK 8.0 ##NumberValue
+R4 OK 8.0 ##NumberValue
+R5 OK 8.0 ##NumberValue
+--- END
+
+### CASE 11 | PASS
+--- SRC
+export = 9
+return export
+--- EXPECT
+R1 OK 9.0 ##NumberValue
+R2 OK 9.0 ##NumberValue
+R3 OK 9.0 ##NumberValue
+R4 OK 9.0 ##NumberValue
+R5 OK 9.0 ##NumberValue
+--- END
+
+### CASE 12 | PASS
+--- SRC
+super = 10
+return super
+--- EXPECT
+R1 OK 10.0 ##NumberValue
+R2 OK 10.0 ##NumberValue
+R3 OK 10.0 ##NumberValue
+R4 OK 10.0 ##NumberValue
+R5 OK 10.0 ##NumberValue
+--- END
+
+### CASE 13 | PASS
+--- SRC
+extends = 11
+return extends
+--- EXPECT
+R1 OK 11.0 ##NumberValue
+R2 OK 11.0 ##NumberValue
+R3 OK 11.0 ##NumberValue
+R4 OK 11.0 ##NumberValue
+R5 OK 11.0 ##NumberValue
+--- END
+
+### CASE 14 | PASS
+--- SRC
+catch = 12
+return catch
+--- EXPECT
+R1 OK 12.0 ##NumberValue
+R2 OK 12.0 ##NumberValue
+R3 OK 12.0 ##NumberValue
+R4 OK 12.0 ##NumberValue
+R5 OK 12.0 ##NumberValue
+--- END
+
+### CASE 15 | PASS
+--- SRC
+finally = 13
+return finally
+--- EXPECT
+R1 OK 13.0 ##NumberValue
+R2 OK 13.0 ##NumberValue
+R3 OK 13.0 ##NumberValue
+R4 OK 13.0 ##NumberValue
+R5 OK 13.0 ##NumberValue
+--- END
+
+### CASE 16 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 0x1F | )
+--- SRC
+return 0x1F
+--- EXPECT
+R1 OK 31.0 ##NumberValue
+R2 OK 31.0 ##NumberValue
+R3 OK 31.0 ##NumberValue
+R4 OK 31.0 ##NumberValue
+R5 OK 31.0 ##NumberValue
+--- END
+
+### CASE 17 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 0b101 | )
+--- SRC
+return 0b101
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 18 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 0o17 | )
+--- SRC
+return 0o17
+--- EXPECT
+R1 OK 15.0 ##NumberValue
+R2 OK 15.0 ##NumberValue
+R3 OK 15.0 ##NumberValue
+R4 OK 15.0 ##NumberValue
+R5 OK 15.0 ##NumberValue
+--- END
+
+### CASE 19 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 1e3 | )
+--- SRC
+return 1e3
+--- EXPECT
+R1 OK 1000.0 ##NumberValue
+R2 OK 1000.0 ##NumberValue
+R3 OK 1000.0 ##NumberValue
+R4 OK 1000.0 ##NumberValue
+R5 OK 1000.0 ##NumberValue
+--- END
+
+### CASE 20 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 1.5e2 | )
+--- SRC
+return 1.5e2
+--- EXPECT
+R1 OK 150.0 ##NumberValue
+R2 OK 150.0 ##NumberValue
+R3 OK 150.0 ##NumberValue
+R4 OK 150.0 ##NumberValue
+R5 OK 150.0 ##NumberValue
+--- END
+
+### CASE 21 | PASS
+--- SRC
+return 007
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 22 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 5. | )
+--- SRC
+return 5.
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 23 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return .5 | )
+--- SRC
+return .5
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 24 | PASS
+--- SRC
+return 'a\nb'
+--- EXPECT
+R1 OK a\nb ##StringValue
+R2 OK a\nb ##StringValue
+R3 OK a\nb ##StringValue
+R4 OK a\nb ##StringValue
+R5 OK a\nb ##StringValue
+--- END
+
+### CASE 25 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码)
+--- SRC
+return 'a\cb'
+--- EXPECT
+R1 OK a\cb ##StringValue
+R2 OK a\cb ##StringValue
+R3 OK a\cb ##StringValue
+R4 OK a\cb ##StringValue
+R5 OK a\cb ##StringValue
+--- END
+
+### CASE 26 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码)
+--- SRC
+return "a\cb"
+--- EXPECT
+R1 OK a\cb ##StringValue
+R2 OK a\cb ##StringValue
+R3 OK a\cb ##StringValue
+R4 OK a\cb ##StringValue
+R5 OK a\cb ##StringValue
+--- END
+
+### CASE 27 | PASS
+--- SRC
+return "x{1+1}y"
+--- EXPECT
+R1 OK x2.0y ##StringValue
+R2 OK x2.0y ##StringValue
+R3 OK x2.0y ##StringValue
+R4 OK x2.0y ##StringValue
+R5 OK x2.0y ##StringValue
+--- END
+
+### CASE 28 | PASS
+--- SRC
+return 'x{1+1}y'
+--- EXPECT
+R1 OK x{1+1}y ##StringValue
+R2 OK x{1+1}y ##StringValue
+R3 OK x{1+1}y ##StringValue
+R4 OK x{1+1}y ##StringValue
+R5 OK x{1+1}y ##StringValue
+--- END
+
+### CASE 29 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码)
+--- SRC
+return "a\{1+1}b"
+--- EXPECT
+R1 OK a\{1+1}b ##StringValue
+R2 OK a\{1+1}b ##StringValue
+R3 OK a\{1+1}b ##StringValue
+R4 OK a\{1+1}b ##StringValue
+R5 OK a\{1+1}b ##StringValue
+--- END
+
+### CASE 30 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码)
+--- SRC
+return "\{1+1}"
+--- EXPECT
+R1 OK \{1+1} ##StringValue
+R2 OK \{1+1} ##StringValue
+R3 OK \{1+1} ##StringValue
+R4 OK \{1+1} ##StringValue
+R5 OK \{1+1} ##StringValue
+--- END
+
+### CASE 31 | PASS
+--- SRC
+return """
+A{1+1}B
+"""
+--- EXPECT
+R1 OK \nA2.0B\n ##StringValue
+R2 OK \nA2.0B\n ##StringValue
+R3 OK \nA2.0B\n ##StringValue
+R4 OK \nA2.0B\n ##StringValue
+R5 OK \nA2.0B\n ##StringValue
+--- END
+
+### CASE 32 | PASS
+--- SRC
+return """
+line1
+line2
+"""
+--- EXPECT
+R1 OK \nline1\nline2\n ##StringValue
+R2 OK \nline1\nline2\n ##StringValue
+R3 OK \nline1\nline2\n ##StringValue
+R4 OK \nline1\nline2\n ##StringValue
+R5 OK \nline1\nline2\n ##StringValue
+--- END
+
+### CASE 33 | PASS
+--- SRC
+// comment
+return 1
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 34 | PASS
+--- SRC
+/* block */ return 2
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 35 | PASS
+--- SRC
+# hash
+return 3
+--- EXPECT
+R1 ERR CompileException: 意外的字符: '#' (U+0023) at line 1, column 1
+R2 ERR CompileException: 意外的字符: '#' (U+0023) at line 1, column 1
+R3 ERR CompileException: 意外的字符: '#' (U+0023) at line 1, column 1
+R4 ERR CompileException: 意外的字符: '#' (U+0023) at line 1, column 1
+R5 ERR CompileException: 意外的字符: '#' (U+0023) at line 1, column 1
+--- END
+
+### CASE 36 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: a = 1; return a | )
+--- SRC
+a = 1; return a
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 37 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: a = 1 ; b = 2 ; return a + b | )
+--- SRC
+a = 1 ; b = 2 ; return a + b
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 38 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 11 列 | 请检查: if(true){ return 5 } | )
+--- SRC
+if(true){ return 5 }
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 39 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 10 列 | 请检查: if(true){} | )
+--- SRC
+if(true){}
+return 6
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 40 | PASS
+--- SRC
+if(true)
+{
+return 7
+}
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 41 | PASS
+--- SRC
+if
+(true){
+return 8
+}
+--- EXPECT
+R1 OK 8.0 ##NumberValue
+R2 OK 8.0 ##NumberValue
+R3 OK 8.0 ##NumberValue
+R4 OK 8.0 ##NumberValue
+R5 OK 8.0 ##NumberValue
+--- END
+
+### CASE 42 | PASS
+--- SRC
+x = 1
+if(true){
+x = 2
+} else {
+x = 3
+}
+return x
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 43 | PASS
+--- SRC
+x = 1
+if(false){
+x = 2
+}
+elif(true){
+x = 9
+}
+return x
+--- EXPECT
+R1 OK 9.0 ##NumberValue
+R2 OK 9.0 ##NumberValue
+R3 OK 9.0 ##NumberValue
+R4 OK 9.0 ##NumberValue
+R5 OK 9.0 ##NumberValue
+--- END
+
+### CASE 44 | PASS
+--- SRC
+return 1 +
+2
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 45 | PASS
+--- SRC
+x = 1
++ 2
+return x
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 46 | PASS
+--- SRC
+x = [1,2]
+return x
+[0]
+--- EXPECT
+R1 OK [1.0, 2.0] ##ListValue
+R2 OK [1.0, 2.0] ##ListValue
+R3 OK [1.0, 2.0] ##ListValue
+R4 OK [1.0, 2.0] ##ListValue
+R5 OK [1.0, 2.0] ##ListValue
+--- END
+
+### CASE 47 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: f = -> { return 7 } | )
+--- SRC
+f = -> { return 7 }
+return f()
+--- EXPECT
+R1 OK 7.0 ##NumberValue
+R2 OK 7.0 ##NumberValue
+R3 OK 7.0 ##NumberValue
+R4 OK 7.0 ##NumberValue
+R5 OK 7.0 ##NumberValue
+--- END
+
+### CASE 48 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: f = (a,b) -> { return 1 } | )
+--- SRC
+f = (a,b) -> { return 1 }
+return f(1,2)
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 49 | PASS
+--- SRC
+return - 5 + 10
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 50 | PASS
+--- SRC
+x = 4
+return x * -2
+--- EXPECT
+R1 OK -8.0 ##NumberValue
+R2 OK -8.0 ##NumberValue
+R3 OK -8.0 ##NumberValue
+R4 OK -8.0 ##NumberValue
+R5 OK -8.0 ##NumberValue
+--- END
+
+### CASE 51 | PASS
+--- SRC
+a = 1
+a++
+return a
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 52 | PASS
+--- SRC
+a = 5
+return a++
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 53 | PASS
+--- SRC
+a = 5
+return ++a
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 54 | PASS
+--- SRC
+a ~= 5
+return a
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 55 | PASS
+--- SRC
+a = 1
+a ~= 9
+return a
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 56 | PASS
+--- SRC
+return 2 ~~ [1,3]
+--- EXPECT
+R1 OK false ##BooleanValue
+R2 OK false ##BooleanValue
+R3 OK false ##BooleanValue
+R4 OK false ##BooleanValue
+R5 OK false ##BooleanValue
+--- END
+
+### CASE 57 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 1 < 2 == true | )
+--- SRC
+return 1 < 2 == true
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 58 | PASS
+--- SRC
+return (1 < 2) == (3 < 4)
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 59 | PASS
+--- SRC
+return 1 == 1 && 2 == 2
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 60 | PASS
+--- SRC
+return true && false || true
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 61 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 'a' in {'a': 1} | )
+--- SRC
+return 'a' in {'a': 1}
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 62 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误,无法定位问题, 请检查代码)
+--- SRC
+return @foo
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 63 | PASS
+--- SRC
+return 3 ? 4 : 5
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 64 | PASS
+--- SRC
+return 0 ? 4 : 5
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 65 | PASS
+--- SRC
+return 0 ? : 5
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 66 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 10 列 | 请检查: return 3 ? 4 | )
+--- SRC
+return 3 ? 4
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 67 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 3 ? 4 : | )
+--- SRC
+return 3 ? 4 :
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 68 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return 0 ? 4 : | )
+--- SRC
+return 0 ? 4 :
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 69 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: m = {'a':1,} | )
+--- SRC
+m = {'a':1,}
+return m['a']
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 70 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: l = [1,2,] | )
+--- SRC
+l = [1,2,]
+return l[1]
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 71 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: a = 1 b = 2 | )
+--- SRC
+a = 1 b = 2
+return a + b
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 72 | PASS
+--- SRC
+arr = [1,2]
+return arr[]
+--- EXPECT
+R1 OK [1.0, 2.0] ##ListValue
+R2 OK [1.0, 2.0] ##ListValue
+R3 OK [1.0, 2.0] ##ListValue
+R4 OK [1.0, 2.0] ##ListValue
+R5 OK [1.0, 2.0] ##ListValue
+--- END
+
+### CASE 73 | PASS
+--- SRC
+s = 0
+for (i in [1,2,3]) {
+s = s + i
+}
+return s
+--- EXPECT
+R1 OK 6.0 ##NumberValue
+R2 OK 6.0 ##NumberValue
+R3 OK 6.0 ##NumberValue
+R4 OK 6.0 ##NumberValue
+R5 OK 6.0 ##NumberValue
+--- END
+
+### CASE 74 | PASS
+--- SRC
+s = 0
+for (i in [1,2,3]) {
+if (i == 2) {
+next
+}
+s = s + i
+}
+return s
+--- EXPECT
+R1 OK 4.0 ##NumberValue
+R2 OK 4.0 ##NumberValue
+R3 OK 4.0 ##NumberValue
+R4 OK 4.0 ##NumberValue
+R5 OK 4.0 ##NumberValue
+--- END
+
+### CASE 75 | PASS
+--- SRC
+s = 0
+while (s < 5) {
+s = s + 2
+if (s > 3) {
+break
+}
+}
+return s
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 76 | PASS
+--- SRC
+switch(2){
+case 1 {
+return 1
+}
+case 2 {
+return 2
+}
+else {
+return 3
+}
+}
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 77 | PASS
+--- SRC
+x = 5
+return (x)
+(3)
+--- EXPECT
+R1 OK 5.0 ##NumberValue
+R2 OK 5.0 ##NumberValue
+R3 OK 5.0 ##NumberValue
+R4 OK 5.0 ##NumberValue
+R5 OK 5.0 ##NumberValue
+--- END
+
+### CASE 78 | PASS
+--- SRC
+变量 = 42
+return 变量
+--- EXPECT
+R1 OK 42.0 ##NumberValue
+R2 OK 42.0 ##NumberValue
+R3 OK 42.0 ##NumberValue
+R4 OK 42.0 ##NumberValue
+R5 OK 42.0 ##NumberValue
+--- END
+
+### CASE 79 | PASS
+--- SRC
+_a1 = 1
+return _a1
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 80 | PASS
+--- SRC
+return 10 % 3
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 81 | PASS
+--- SRC
+a = 2
+a *= 3
+a += 1
+a -= 2
+a /= 5
+return a
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 82 | PASS
+--- SRC
+s = ''
+for (k, v in {'a': 1}) {
+s = k
+}
+return s
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 83 | PASS
+--- SRC
+return [
+1,
+2
+][1]
+--- EXPECT
+R1 OK 2.0 ##NumberValue
+R2 OK 2.0 ##NumberValue
+R3 OK 2.0 ##NumberValue
+R4 OK 2.0 ##NumberValue
+R5 OK 2.0 ##NumberValue
+--- END
+
+### CASE 84 | PASS
+--- SRC
+return [1
+,2][0]
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 85 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return not true | )
+--- SRC
+return not true
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 86 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: return true and false | )
+--- SRC
+return true and false
+--- EXPECT
+R1 OK true ##BooleanValue
+R2 OK true ##BooleanValue
+R3 OK true ##BooleanValue
+R4 OK true ##BooleanValue
+R5 OK true ##BooleanValue
+--- END
+
+### CASE 87 | PASS
+--- SRC
+return
+5
+--- EXPECT
+R1 OK  ##NoneValue
+R2 OK  ##NoneValue
+R3 OK  ##NoneValue
+R4 OK  ##NoneValue
+R5 OK  ##NoneValue
+--- END
+
+### CASE 88 | PASS
+--- SRC
+if (true
+) {
+return 1
+}
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 89 | PASS
+--- SRC
+if (
+true) {
+return 1
+}
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 90 | PASS
+--- SRC
+x = {}
+return x
+--- EXPECT
+R1 OK {} ##MapValue
+R2 OK {} ##MapValue
+R3 OK {} ##MapValue
+R4 OK {} ##MapValue
+R5 OK {} ##MapValue
+--- END
+
+### CASE 91 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 2 行,第 11 列 | 请检查: for (i = 0; i < 3; i = i + 1) { | )
+--- SRC
+s = 0
+for (i = 0; i < 3; i = i + 1) {
+s = s + 1
+}
+return s
+--- EXPECT
+R1 OK 3.0 ##NumberValue
+R2 OK 3.0 ##NumberValue
+R3 OK 3.0 ##NumberValue
+R4 OK 3.0 ##NumberValue
+R5 OK 3.0 ##NumberValue
+--- END
+
+### CASE 92 | PASS
+--- SRC
+return '§ax'
+--- EXPECT
+R1 OK §ax ##StringValue
+R2 OK §ax ##StringValue
+R3 OK §ax ##StringValue
+R4 OK §ax ##StringValue
+R5 OK §ax ##StringValue
+--- END
+
+### CASE 93 | PASS
+--- SRC
+return "{'a'}"
+--- EXPECT
+R1 OK a ##StringValue
+R2 OK a ##StringValue
+R3 OK a ##StringValue
+R4 OK a ##StringValue
+R5 OK a ##StringValue
+--- END
+
+### CASE 94 | PASS
+--- SRC
+return "{ {'k':2}['k'] }"
+--- EXPECT
+R1 OK 2.0 ##StringValue
+R2 OK 2.0 ##StringValue
+R3 OK 2.0 ##StringValue
+R4 OK 2.0 ##StringValue
+R5 OK 2.0 ##StringValue
+--- END
+
+### CASE 95 | PASS
+--- SRC
+async {
+x = 1
+}
+return 1
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END
+
+### CASE 96 | EXPECTED
+# Aria free-zone (Shimmer R1: ERR: ShimmerCompileException: 单元: [t] 编译错误, 位于第 1 行,第 1 列 | 请检查: a = 1; | )
+--- SRC
+a = 1;
+return a
+--- EXPECT
+R1 OK 1.0 ##NumberValue
+R2 OK 1.0 ##NumberValue
+R3 OK 1.0 ##NumberValue
+R4 OK 1.0 ##NumberValue
+R5 OK 1.0 ##NumberValue
+--- END

@@ -45,10 +45,11 @@ console.error("something went wrong")
 
 ### 常量
 
-| 函数          | 说明     |
-|-------------|--------|
-| `math.PI()` | 圆周率 π  |
-| `math.E()`  | 自然常数 e |
+| 函数          | 说明                  |
+|-------------|---------------------|
+| `math.PI()` | 圆周率 π               |
+| `math.pi()` | 圆周率 π（小写别名，零参调用）    |
+| `math.E()`  | 自然常数 e              |
 
 ### 基础运算
 
@@ -114,13 +115,14 @@ console.error("something went wrong")
 | `scalb`         | `math.scalb(x, exp)`       | x × 2^exp   |
 | `nextUp`        | `math.nextUp(x)`           | 下一个浮点数（正方向） |
 | `nextDown`      | `math.nextDown(x)`         | 下一个浮点数（负方向） |
+| `nextAfter`     | `math.nextAfter(a, b)`     | a 朝 b 方向的下一个浮点数 |
 | `IEEEremainder` | `math.IEEEremainder(a, b)` | IEEE 余数     |
 | `getExponent`   | `math.getExponent(x)`      | 获取指数部分      |
 
 ```aria
-val.r = math.sqrt(16)          // 4.0
-val.angle = math.atan2(1, 1)   // 0.7853... (π/4)
-val.d = math.toDegrees(angle)  // 45.0
+r = math.sqrt(16)          // 4.0
+angle = math.atan2(1, 1)   // 0.7853... (π/4)
+d = math.toDegrees(angle)  // 45.0
 ```
 
 ---
@@ -143,9 +145,9 @@ val.d = math.toDegrees(angle)  // 45.0
 类型名称对照：`none`、`number`、`boolean`、`string`、`object`、`store`、`class`、`function`、`list`、`map`。
 
 ```aria
-val.t = type.typeof(42)       // "number"
-val.ok = type.isString("hi")  // true
-val.n = type.toNumber("3.14") // 3.14
+t = type.typeof(42)       // "number"
+ok = type.isString("hi")  // true
+n = type.toNumber("3.14") // 3.14
 ```
 
 ---
@@ -162,8 +164,8 @@ val.n = type.toNumber("3.14") // 3.14
 | `split`        | `regex.split(pattern, str)`                     | 按正则分割                                         |
 
 ```aria
-val.ok = regex.test("\\d+", "abc123")  // true
-val.m = regex.match("(\\w+)@(\\w+)", "user@host")
+ok = regex.test("\\d+", "abc123")  // true
+m = regex.match("(\\w+)@(\\w+)", "user@host")
 // m = ["user@host", "user", "host"]
 ```
 
@@ -183,9 +185,9 @@ val.m = regex.match("(\\w+)@(\\w+)", "user@host")
 | `hashCode`     | `crypto.hashCode(str)`     | Java hashCode |
 
 ```aria
-val.hash = crypto.sha256("hello")
-val.encoded = crypto.base64Encode("hello world")
-val.id = crypto.uuid()  // "550e8400-e29b-..."
+hash = crypto.sha256("hello")
+encoded = crypto.base64Encode("hello world")
+id = crypto.uuid()  // "550e8400-e29b-..."
 ```
 
 ---
@@ -214,10 +216,10 @@ val.id = crypto.uuid()  // "550e8400-e29b-..."
 | `addSeconds` | `datetime.addSeconds(millis, n)`         | 加 n 秒                                       |
 
 ```aria
-val.now = datetime.now()
-val.str = datetime.format(now)  // "2025-01-15 14:30:00"
-val.tomorrow = datetime.addDays(now, 1)
-val.diff = datetime.diff(now, tomorrow, "hours")  // 24.0
+now = datetime.now()
+str = datetime.format(now)  // "2026-01-15 14:30:00"
+tomorrow = datetime.addDays(now, 1)
+diff = datetime.diff(now, tomorrow, "hours")  // 24.0
 ```
 
 ---
@@ -232,11 +234,11 @@ val.diff = datetime.diff(now, tomorrow, "hours")  // 24.0
 | `cancelAll` | `scheduler.cancelAll()`          | 取消所有任务         |
 
 ```aria
-val.id = scheduler.delay(1000, -> {
+id = scheduler.delay(1000, -> {
     println("1 秒后执行")
 })
 
-val.timerId = scheduler.interval(500, -> {
+timerId = scheduler.interval(500, -> {
     println("每 500ms 执行一次")
 })
 scheduler.cancel(timerId)
@@ -253,7 +255,7 @@ scheduler.cancel(timerId)
 | `render` | `template.render(template, data)` | 渲染模板，data 为 Map |
 
 ```aria
-val.result = template.render("Hello, {name}! Age: {age}", {
+result = template.render("Hello, {name}! Age: {age}", {
     "name": "Alice",
     "age": 25
 })
@@ -279,9 +281,9 @@ val.result = template.render("Hello, {name}! Age: {age}", {
 
 ```aria
 fs.write("test.txt", "hello world")
-val.content = fs.read("test.txt")  // "hello world"
-val.files = fs.list(".")
-val.info = fs.info("test.txt")     // {size: 11, isDir: false, ...}
+content = fs.read("test.txt")  // "hello world"
+files = fs.list(".")
+info = fs.info("test.txt")     // {size: 11, isDir: false, ...}
 ```
 
 ---
@@ -305,11 +307,11 @@ val.info = fs.info("test.txt")     // {size: 11, isDir: false, ...}
 异步回调签名：`callback(error, response)`，error 为 none 表示成功。
 
 ```aria
-val.resp = net.get("https://api.example.com/data")
+resp = net.get("https://api.example.com/data")
 println(resp.status)  // 200.0
 println(resp.body)
 
-val.resp2 = net.post("https://api.example.com/data", '{"key":"value"}', {
+resp2 = net.post("https://api.example.com/data", '{"key":"value"}', {
     "Content-Type": "application/json"
 })
 
@@ -346,10 +348,10 @@ event.off("user.login")
 | `stringify` | `json.stringify(value, pretty?)` | Aria 值 → JSON 字符串，pretty=true 格式化输出 |
 
 ```aria
-val.obj = json.parse('{"name": "Alice", "age": 25}')
+obj = json.parse('{"name": "Alice", "age": 25}')
 println(obj.name)  // "Alice"
 
-val.str = json.stringify({"key": "value"}, true)
+str = json.stringify({"key": "value"}, true)
 ```
 
 ---
@@ -364,9 +366,9 @@ val.str = json.stringify({"key": "value"}, true)
 支持的类型：none、number、boolean、string、list、map。
 
 ```aria
-val.data = {"name": "Alice", "scores": [90, 85, 92]}
-val.bytes = serial.encode(data)
-val.restored = serial.decode(bytes)
+data = {"name": "Alice", "scores": [90, 85, 92]}
+bytes = serial.encode(data)
+restored = serial.decode(bytes)
 ```
 
 ---
@@ -392,13 +394,13 @@ val.restored = serial.decode(bytes)
 | `close`       | `db.close(conn)`                           | 关闭连接                     |
 
 ```aria
-val.conn = db.connect("sqlite", "test.db")
+conn = db.connect("sqlite", "test.db")
 db.table(conn, "users", {"id": "INTEGER PRIMARY KEY", "name": "TEXT", "age": "INTEGER"})
 
 db.insert(conn, "users", {"name": "Alice", "age": 25})
 db.insert(conn, "users", {"name": "Bob", "age": 30})
 
-val.rows = db.select(conn, "users", {"name": "Alice"})
+rows = db.select(conn, "users", {"name": "Alice"})
 println(rows)  // [{id: 1.0, name: "Alice", age: 25.0}]
 
 db.update(conn, "users", {"age": 26}, {"name": "Alice"})
@@ -424,18 +426,18 @@ db.close(conn)
 |--------------------|----------------------------------------|-------------------|
 | `length`           | `str.length()`                         | 字符串长度             |
 | `substring`        | `str.substring(start, end?)`           | 子串                |
-| `replace`          | `str.replace(target, replacement)`     | 替换所有匹配（字面量）       |
+| `replace`          | `str.replace(target, replacement)`     | 替换所有匹配（字面量）；只给 1 个参数时返回原串 |
 | `replaceAll`       | `str.replaceAll(regex, replacement)`   | 正则替换所有            |
 | `replaceFirst`     | `str.replaceFirst(regex, replacement)` | 正则替换第一个           |
-| `split`            | `str.split(delimiter)`                 | 分割为列表             |
+| `split`            | `str.split(delimiter[, limit])`        | 按正则分割为列表；默认（无 limit）丢弃尾部空串 |
 | `trim`             | `str.trim()`                           | 去除首尾空白            |
-| `startsWith`       | `str.startsWith(prefix)`               | 是否以 prefix 开头     |
+| `startsWith`       | `str.startsWith(prefix[, offset])`     | 是否以 prefix 开头（可从 offset 位置起判断） |
 | `endsWith`         | `str.endsWith(suffix)`                 | 是否以 suffix 结尾     |
 | `contains`         | `str.contains(sub)`                    | 是否包含子串            |
-| `indexOf`          | `str.indexOf(sub)`                     | 子串首次出现位置，-1 表示未找到 |
-| `lastIndexOf`      | `str.lastIndexOf(sub)`                 | 子串最后出现位置          |
-| `toUpperCase`      | `str.toUpperCase()`                    | 转大写               |
-| `toLowerCase`      | `str.toLowerCase()`                    | 转小写               |
+| `indexOf`          | `str.indexOf(sub[, from])`             | 子串首次出现位置，-1 表示未找到（可从 from 起查） |
+| `lastIndexOf`      | `str.lastIndexOf(sub[, from])`         | 子串最后出现位置（可从 from 向前查） |
+| `toUpperCase`      | `str.toUpperCase()`                    | 转大写（Locale.ROOT，不受系统语言影响） |
+| `toLowerCase`      | `str.toLowerCase()`                    | 转小写（Locale.ROOT）  |
 | `charAt`           | `str.charAt(index)`                    | 获取指定位置字符          |
 | `equals`           | `str.equals(other)`                    | 严格相等比较            |
 | `equalsIgnoreCase` | `str.equalsIgnoreCase(other)`          | 忽略大小写比较           |
@@ -443,11 +445,16 @@ db.close(conn)
 | `repeat`           | `str.repeat(count)`                    | 重复字符串 count 次     |
 
 ```aria
-val.s = "Hello, World!"
+s = "Hello, World!"
 println(s.length())        // 13.0
 println(s.substring(0, 5)) // "Hello"
 println(s.toUpperCase())   // "HELLO, WORLD!"
-val.parts = s.split(", ")  // ["Hello", "World!"]
+parts = s.split(", ")      // ["Hello", "World!"]
+
+println('a,b,,'.split(',').size())    // 2.0（尾部空串被丢弃）
+println('a,b,c'.split(',', 2)[1])     // "b,c"（limit 限制段数）
+println('abcabc'.startsWith('b', 1))  // true
+println('abcabc'.indexOf('a', 1))     // 3.0
 ```
 
 ### 列表方法
@@ -456,21 +463,25 @@ val.parts = s.split(", ")  // ["Hello", "World!"]
 
 | 方法            | 签名                          | 说明               |
 |---------------|-----------------------------|------------------|
-| `add`         | `list.add(item)`            | 添加元素             |
-| `remove`      | `list.remove(index)`        | 移除指定索引元素，返回被移除的值 |
-| `get`         | `list.get(index)`           | 获取指定索引元素         |
-| `set`         | `list.set(index, value)`    | 设置指定索引元素         |
+| `add`         | `list.add(item)`            | 追加元素到末尾           |
+| `add`         | `list.add(index, item)`     | 插入元素到指定索引         |
+| `remove`      | `list.remove(value)`        | 按**值**删除首个相等元素（跨类型数值相等），返回 boolean |
+| `removeIndex` | `list.removeIndex(index)`   | 按**索引**删除，返回被删元素；上越界返回 `none`，负索引抛错 |
+| `get`         | `list.get(index)`           | 获取指定索引元素；上越界返回 `none`，负索引抛错 |
+| `set`         | `list.set(index, value)`    | 设置指定索引元素，返回**旧元素**；越界不写入 |
 | `size`        | `list.size()`               | 列表长度             |
-| `contains`    | `list.contains(item)`       | 是否包含元素           |
-| `indexOf`     | `list.indexOf(item)`        | 元素首次出现位置         |
-| `lastIndexOf` | `list.lastIndexOf(item)`    | 元素最后出现位置         |
+| `contains`    | `list.contains(item)`       | 是否包含元素（跨类型数值相等：`contains('2')` 匹配 `2`） |
+| `containsAll` | `list.containsAll(other)`   | 是否包含另一列表的全部元素（此方法**不**做跨类型匹配） |
+| `indexOf`     | `list.indexOf(item)`        | 元素首次出现位置（跨类型数值相等），-1 未找到 |
+| `lastIndexOf` | `list.lastIndexOf(item)`    | 元素最后出现位置（跨类型数值相等） |
 | `sort`        | `list.sort()`               | 按数值排序（原地）        |
 | `reverse`     | `list.reverse()`            | 反转（原地）           |
 | `clear`       | `list.clear()`              | 清空               |
 | `isEmpty`     | `list.isEmpty()`            | 是否为空             |
-| `subList`     | `list.subList(from, to?)`   | 子列表              |
-| `addAll`      | `list.addAll(otherList)`    | 添加另一个列表的所有元素     |
-| `removeAll`   | `list.removeAll(otherList)` | 移除另一个列表中的所有元素    |
+| `subList`     | `list.subList(from, to)`    | 子列表 `[from, to)`；要求 `from`、`to` 都**小于** size，否则返回 `none` |
+| `addAll`      | `list.addAll(other)`        | 追加另一列表全部元素，返回 boolean；非列表参数按单元素处理 |
+| `removeAll`   | `list.removeAll(other)`     | 移除另一列表中的所有元素，返回 boolean；非列表参数按单元素处理 |
+| `retainAll`   | `list.retainAll(other)`     | 仅保留另一列表中出现的元素（跨类型数值相等），返回是否发生变化 |
 | `join`        | `list.join(separator?)`     | 拼接为字符串，默认 `,`    |
 
 #### 高阶函数
@@ -489,11 +500,11 @@ val.parts = s.split(", ")  // ["Hello", "World!"]
 | `sortBy`    | `list.sortBy(fn)`           | 按 fn 返回值排序（原地）             |
 
 ```aria
-val.nums = [3, 1, 4, 1, 5]
-val.doubled = nums.map(-> { return args[0] * 2 })     // [6, 2, 8, 2, 10]
-val.evens = nums.filter(-> { return args[0] % 2 == 0 }) // [4]
-val.sum = nums.reduce(-> { return args[0] + args[1] }, 0) // 14
-val.found = nums.find(-> { return args[0] > 3 })       // 4
+nums = [3, 1, 4, 1, 5]
+doubled = nums.map(-> { return args[0] * 2 })     // [6, 2, 8, 2, 10]
+evens = nums.filter(-> { return args[0] % 2 == 0 }) // [4]
+sum = nums.reduce(-> { return args[0] + args[1] }, 0) // 14
+found = nums.find(-> { return args[0] > 3 })       // 4
 println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 ```
 
@@ -503,7 +514,7 @@ println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 
 | 方法              | 签名                               | 说明                          |
 |-----------------|----------------------------------|-----------------------------|
-| `put`           | `map.put(key, value)`            | 设置键值对                       |
+| `put`           | `map.put(key, value)`            | 设置键值对，返回该键的**旧值**（无则 `none`） |
 | `get`           | `map.get(key)`                   | 获取值                         |
 | `remove`        | `map.remove(key)`                | 移除键值对，返回被移除的值               |
 | `size`          | `map.size()`                     | 键值对数量                       |
@@ -514,8 +525,8 @@ println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 | `containsValue` | `map.containsValue(value)`       | 是否包含值                       |
 | `clear`         | `map.clear()`                    | 清空                          |
 | `isEmpty`       | `map.isEmpty()`                  | 是否为空                        |
-| `putAll`        | `map.putAll(otherMap)`           | 合并另一个字典                     |
-| `putIfAbsent`   | `map.putIfAbsent(key, value)`    | 键不存在时设置                     |
+| `putAll`        | `map.putAll(otherMap)`           | 合并另一个字典（接受任意 map；非 map 参数静默忽略） |
+| `putIfAbsent`   | `map.putIfAbsent(key, value)`    | 键不存在时设置并返回 `none`；已存在时返回旧值（宿主包装形式） |
 | `getOrDefault`  | `map.getOrDefault(key, default)` | 获取值，不存在返回默认值                |
 
 #### 高阶函数
@@ -527,15 +538,15 @@ println(nums.join("-"))  // "3.0-1.0-4.0-1.0-5.0"
 | `mapValues` | `map.mapValues(fn)` | 映射值，`fn(value, key)` → 新字典 |
 
 ```aria
-val.m = {"name": "Alice", "age": 25}
-println(m.keys())    // ["name", "age"]
+m = {"name": "Alice", "age": 25}
+println(m.keys())    // [name, age]
 println(m.size())    // 2.0
 
 m.forEach(-> {
     println(args[0] + " = " + args[1])
 })
 
-val.filtered = m.filter(-> { return args[0] != "age" })
+filtered = m.filter(-> { return args[0] != "age" })
 ```
 
 ### 数字方法
@@ -552,10 +563,10 @@ val.filtered = m.filter(-> { return args[0] != "age" })
 | `floor`      | `num.floor()`         | 向下取整           |
 
 ```aria
-val.pi = 3.14159
-println(pi.toFixed(2))  // "3.14"
-println(pi.round(3))    // 3.142
-println(pi.toInt())     // 3.0
+p = 3.14159
+println(p.toFixed(2))  // "3.14"
+println(p.round(3))    // 3.142
+println(p.toInt())     // 3.0
 ```
 
 ---
@@ -564,14 +575,28 @@ println(pi.toInt())     // 3.0
 
 通过构造器创建 UUID 对象：
 
-| 用法                                                      | 说明          |
-|---------------------------------------------------------|-------------|
-| `val.id = UUID()`                                       | 生成随机 UUID   |
-| `val.id = UUID('550e8400-e29b-41d4-a716-446655440000')` | 从字符串解析 UUID |
+| 用法                                                  | 说明          |
+|-----------------------------------------------------|-------------|
+| `id = UUID()`                                       | 生成随机 UUID   |
+| `id = UUID('550e8400-e29b-41d4-a716-446655440000')` | 从字符串解析 UUID |
+
+非法字符串**不抛异常**，回退为随机 UUID：`UUID('not-a-uuid')` 得到一个随机 UUID 对象。
+
+UUID 对象方法：
+
+| 方法                        | 说明                    |
+|---------------------------|-----------------------|
+| `getMostSignificantBits`  | 高 64 位（数字）            |
+| `getLeastSignificantBits` | 低 64 位（数字）            |
+| `version`                 | UUID 版本号（如 4）         |
+| `variant`                 | UUID variant（一般为 2）   |
 
 ```aria
-val.id = UUID()
+id = UUID()
 print(id)  // 550e8400-e29b-41d4-a716-446655440000
+
+u = UUID('550e8400-e29b-41d4-a716-446655440000')
+print(u.version())  // 4.0
 ```
 
 ---
@@ -582,27 +607,34 @@ print(id)  // 550e8400-e29b-41d4-a716-446655440000
 
 | 用法                        | 说明           |
 |---------------------------|--------------|
-| `Range(start, end)`       | 创建范围，步长默认为 1 |
+| `Range(start, end)`       | 创建**双端闭**区间 `[start, end]`，步长默认为 1 |
 | `Range(start, end, step)` | 创建范围，指定步长    |
 | `start..end`              | 字面量简写，等价 `Range(start, end)` |
 
-`start..end` 与 `Range(start, end)` 完全等价（左闭右开，步长 1），可直接用于 `for-in` 与 `~~`：
+规则：
+
+- Range 是**双端闭**区间：`Range(1, 10)` 含 1 也含 10；
+- `start > end` 且未显式给步长时是**空区间**（不自动倒序）；倒序需 `Range(10, 1, -1)`；
+- 参数少于 2 个时按 `(0, 0)` 处理（`Range()`、`Range(5)` 都只含 0）；
+- `~~` 的右值只认 Range（见[运算符](operators)）。
+
+`start..end` 与 `Range(start, end)` 完全等价，可直接用于 `for-in` 与 `~~`：
 
 ```aria
-for i in 3..7 {
-    print(i)  // 3.0, 4.0, 5.0, 6.0（不含 7）
+for (i in 3..7) {
+    print(i)  // 3.0, 4.0, 5.0, 6.0, 7.0（含 7）
 }
 ```
 
 ```aria
-val.r = Range(1, 10)
-for i in r {
-    print(i)  // 1.0, 2.0, 3.0, ..., 9.0
+r = Range(1, 10)
+for (i in r) {
+    print(i)  // 1.0, 2.0, 3.0, ..., 10.0
 }
 
-val.r2 = Range(0, 10, 2)
-for i in r2 {
-    print(i)  // 0.0, 2.0, 4.0, 6.0, 8.0
+r2 = Range(0, 10, 2)
+for (i in r2) {
+    print(i)  // 0.0, 2.0, 4.0, 6.0, 8.0, 10.0
 }
 ```
 

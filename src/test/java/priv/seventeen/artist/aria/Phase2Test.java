@@ -120,7 +120,7 @@ public class Phase2Test {
         assertEquals(10, range.getEnd());
         assertEquals(1, range.getStep());
         assertTrue(range.contains(5));
-        assertFalse(range.contains(10)); // exclusive end
+        assertTrue(range.contains(10)); // Shimmer 对齐: operators-6 —— 双端闭 [start,end]
         assertFalse(range.contains(-1));
     }
 
@@ -221,7 +221,7 @@ public class Phase2Test {
                 var.x = 0
                 var.y = 0
             }
-            val.p = Point()
+            p = Point()
             return p.x
             """);
         assertEquals(0.0, result.numberValue());
@@ -238,7 +238,7 @@ public class Phase2Test {
                     self.y = args[1]
                 }
             }
-            val.p = Point(10, 20)
+            p = Point(10, 20)
             return p.x + p.y
             """);
         assertEquals(30.0, result.numberValue());
@@ -256,7 +256,7 @@ public class Phase2Test {
                     return 'Hello, ' + self.name + '!'
                 }
             }
-            val.g = Greeter('Aria')
+            g = Greeter('Aria')
             return g.greet()
             """);
         assertEquals("Hello, Aria!", result.stringValue());
@@ -268,7 +268,7 @@ public class Phase2Test {
             class Counter {
                 var.count = 42
             }
-            val.c = Counter()
+            c = Counter()
             return c.count
             """);
         assertEquals(42.0, result.numberValue());
@@ -296,7 +296,7 @@ public class Phase2Test {
                     return self.name + ' barks!'
                 }
             }
-            val.dog = Dog('Rex', 'Labrador')
+            dog = Dog('Rex', 'Labrador')
             return dog.speak()
             """);
         assertEquals("Rex barks!", result.stringValue());
@@ -318,7 +318,7 @@ public class Phase2Test {
                     self.breed = args[1]
                 }
             }
-            val.dog = Dog('Rex', 'Labrador')
+            dog = Dog('Rex', 'Labrador')
             return dog.name + ' ' + dog.breed
             """);
         assertEquals("Rex Labrador", result.stringValue());
@@ -335,7 +335,7 @@ public class Phase2Test {
                     return args[0] * args[1]
                 }
             }
-            val.calc = Calculator()
+            calc = Calculator()
             return calc.add(3, 4) + calc.mul(5, 6)
             """);
         assertEquals(37.0, result.numberValue());
@@ -350,7 +350,7 @@ public class Phase2Test {
                     self.count = self.count + 1
                 }
             }
-            val.c = Counter()
+            c = Counter()
             c.increment()
             c.increment()
             c.increment()
@@ -368,8 +368,8 @@ public class Phase2Test {
                     self.value = args[0]
                 }
             }
-            val.a = Box(10)
-            val.b = Box(20)
+            a = Box(10)
+            b = Box(20)
             return a.value + b.value
             """);
         assertEquals(30.0, result.numberValue());
@@ -382,7 +382,7 @@ public class Phase2Test {
                 var.value = 0
                 new = -> { self.value = args[0] }
             }
-            val.b = Box(42)
+            b = Box(42)
             return b.value
             """);
         assertEquals(42.0, result.numberValue());
@@ -400,7 +400,7 @@ public class Phase2Test {
                 new = -> { self.name = args[0] }
                 describe = -> { return super.describe() + ' (dog)' }
             }
-            val.d = Dog('Rex')
+            d = Dog('Rex')
             return d.describe()
             """);
         assertEquals("Rex is an animal (dog)", result.stringValue());
