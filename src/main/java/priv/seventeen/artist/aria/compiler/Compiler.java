@@ -650,7 +650,15 @@ public class Compiler {
         }
 
         // 普通函数调用（callee 是表达式）
-        int calleeReg = compileNode(callee, -1);
+        // Shimmer 对齐(A8)：callee 是索引表达式(m['k'])时,以 no-resolve 模式发射 GET_INDEX
+        // (c=3)——取出**原始** StoreOnlyValue<CWI> 交给 CALL 带参调用,而非在取值点无参 auto-invoke。
+        // 无后续调用的 m['k'] 仍走普通 compileIndex(c=0/resolve),消费点 auto-invoke 保持不变。
+        int calleeReg;
+        if (callee instanceof IndexExpr idxCallee) {
+            calleeReg = compileIndex(idxCallee, -1, true);
+        } else {
+            calleeReg = compileNode(callee, -1);
+        }
         IRInstruction inst = IRInstruction.of(IROpCode.CALL, dst, calleeReg, args.size());
         inst.c = argBase;
         emit(inst, expr.getLocation());
@@ -658,6 +666,17 @@ public class Compiler {
     }
 
     private int compileIndex(IndexExpr expr, int dst) {
+        return compileIndex(expr, dst, false);
+    }
+
+    /**
+     * @param rawCallee true 表示该索引取值作为调用目标(callee)——GET_INDEX 以 no-resolve 模式(c=3)
+     *                  发射,取出原始值(如 StoreOnlyValue&lt;CWI&gt;)供 CALL 带参调用;不在取值点 auto-invoke。
+     *                  (Shimmer 对齐 A8：后缀链先接完再于消费点求值。)
+     */
+    private int compileIndex(IndexExpr expr, int dst, boolean rawCallee) {
+        // rawCallee 路径可能以 dst=-1 直接进入(compileCall 未过 compileNode 分配)——就地分配寄存器。
+        if (dst < 0) dst = nextRegister();
         boolean argsAccess = expr.getObject() instanceof IdentifierExpr aid && "args".equals(aid.getName());
         if (argsAccess && expr.getIndex() instanceof LiteralExpr lit && lit.getValue() instanceof NumberValue nv) {
             int argIdx = (int) nv.numberValue();
@@ -671,9 +690,13 @@ public class Compiler {
             IRInstruction gi = IRInstruction.of(IROpCode.GET_INDEX, dst, objReg, idxReg);
             // Shimmer 对齐(controlflow-07, ArgsDot)：args[动态下标] 越界返回 none 而非抛
             // "列表索引越界"——c=2 标记 args 索引模式(与 LOAD_ARG 常量形一致)。
+            // Shimmer 对齐(A8)：rawCallee(索引取值当 callee) → c=3 no-resolve,取原始值(不 auto-invoke CWI),
+            // 供 CALL 带参调用。argsAccess 优先(args[i] 不会是 CWI map,二者互斥)。
             if (argsAccess) gi.withC(2);
+            else if (rawCallee) gi.withC(3);
             emit(gi, expr.getLocation());
         } else {
+            // 空索引 m[] 作为 callee 无意义;rawCallee 时也不 resolve(返回对象本身,与现状一致)。
             emit(IRInstruction.of(IROpCode.GET_INDEX, dst, objReg, -1), expr.getLocation());
         }
         return dst;

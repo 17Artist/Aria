@@ -3768,12 +3768,16 @@ public class JITCompiler {
      * c==0 普通索引(list 越界抛"列表索引越界")、c==1 for-in(终结=ITER_END 哨兵)、c==2 args 索引(越界→NONE)。
      */
     public static IValue<?> rtGetIndex(IValue<?> obj, IValue<?> idx, Context ctx, int forIn) throws AriaException {
+        // A8：forIn==3 为 callee-raw 模式——取出的值不 resolveLazyProperty(不无参 auto-invoke CWI),
+        // 交给 CALL 带参调用(与解释器 GET_INDEX c==3 逐分支一致)。
+        boolean rawCallee = forIn == 3;
         if (obj instanceof ListValue lv) {
             int index = (int) idx.numberValue();
             List<IValue<?>> list = lv.jvmValue();
             if (index >= 0 && index < list.size()) {
                 // Shimmer 对齐(interop-3)：读出的惰性属性(CWI)在消费点自动求值(与解释器一致)
-                return Interpreter.resolveLazyProperty(list.get(index), ctx);
+                IValue<?> el = list.get(index);
+                return rawCallee ? el : Interpreter.resolveLazyProperty(el, ctx);
             }
             if (forIn == 1) return NoneValue.ITER_END;
             if (forIn == 2) return NoneValue.NONE;
@@ -3784,7 +3788,8 @@ public class JITCompiler {
             if (forIn == 1) {
                 return Interpreter.mapEntryAt(sm.jvmValue(), (int) idx.numberValue());
             }
-            return Interpreter.resolveLazyProperty(sm.get(idx), ctx);
+            IValue<?> val = sm.get(idx);
+            return rawCallee ? val : Interpreter.resolveLazyProperty(val, ctx);
         }
         if (obj instanceof MapValue mv) {
             Map<IValue<?>, IValue<?>> map = mv.jvmValue();
@@ -3799,7 +3804,7 @@ public class JITCompiler {
                 val = map.get(new StringValue(idx.stringValue()));
             }
             // Shimmer 对齐(interop-3)：self.actions['x'] 读出的 CWI 自动求值(与解释器一致)
-            return Interpreter.resolveLazyProperty(val, ctx);
+            return rawCallee ? val : Interpreter.resolveLazyProperty(val, ctx);
         }
         if (obj instanceof StringValue sv) {
             // A4(jit-8)：字符串按下标取单字符(与解释器 GET_INDEX StringValue 分支一致)
@@ -3827,7 +3832,8 @@ public class JITCompiler {
         // Range 已在上面处理,此处是通用对象。
         if (obj instanceof ObjectValue<?> ov) {
             Variable elem = ov.jvmValue().getElement(idx.stringValue());
-            return Interpreter.resolveLazyProperty(elem != null ? elem.ariaValue() : null, ctx);
+            IValue<?> ev = elem != null ? elem.ariaValue() : null;
+            return rawCallee ? ev : Interpreter.resolveLazyProperty(ev, ctx);
         }
         return NoneValue.NONE;
     }

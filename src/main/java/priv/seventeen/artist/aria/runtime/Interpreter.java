@@ -691,8 +691,10 @@ public class Interpreter {
                     case GET_INDEX: {
                         // inst.c 模式：0=普通索引(list 越界抛)、1=for-in 迭代(终结返回 ITER_END 哨兵,
                         // Shimmer 对齐 controlflow-09：none 元素不再截断遍历)、2=args 索引(越界→none,
-                        // Shimmer 对齐 controlflow-07 ArgsDot)。
+                        // Shimmer 对齐 controlflow-07 ArgsDot)、3=callee-raw(A8：取值当调用目标,
+                        // 不 resolveLazyProperty,取原始 CWI 供 CALL 带参调用)。
                         IValue<?> obj = registers[inst.a];
+                        boolean rawCallee = inst.c == 3;
                         if (inst.b == -1) {
                             // 空索引 — 返回对象本身
                             registers[inst.dst] = obj;
@@ -703,7 +705,9 @@ public class Interpreter {
                                 List<IValue<?>> list = lv.jvmValue();
                                 if (index >= 0 && index < list.size()) {
                                     // Shimmer 对齐(interop-3)：map/list 读出的惰性属性(CWI)在消费点自动求值
-                                    registers[inst.dst] = resolveLazyProperty(list.get(index), context);
+                                    // A8：rawCallee(c=3)时不求值,取原始值供 CALL 带参调用。
+                                    IValue<?> el = list.get(index);
+                                    registers[inst.dst] = rawCallee ? el : resolveLazyProperty(el, context);
                                 } else if (inst.c == 1) {
                                     registers[inst.dst] = NoneValue.ITER_END;
                                 } else if (inst.c == 2) {
@@ -723,13 +727,15 @@ public class Interpreter {
                                         val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                                     }
                                     // Shimmer 对齐(interop-3)：self.actions['x'] 读出的 CWI 自动求值
-                                    registers[inst.dst] = resolveLazyProperty(val, context);
+                                    // A8：rawCallee(c=3)时不求值,取原始 CWI 供 CALL 带参调用。
+                                    registers[inst.dst] = rawCallee ? val : resolveLazyProperty(val, context);
                                 }
                             } else if (obj instanceof SmallMapValue sm) {
                                 if (inst.c == 1) {
                                     registers[inst.dst] = mapEntryAt(sm.jvmValue(), (int) idx.numberValue());
                                 } else {
-                                    registers[inst.dst] = resolveLazyProperty(sm.get(idx), context);
+                                    IValue<?> val = sm.get(idx);
+                                    registers[inst.dst] = rawCallee ? val : resolveLazyProperty(val, context);
                                 }
                             } else if (obj instanceof StringValue sv) {
                                 int index = (int) idx.numberValue();
@@ -754,8 +760,10 @@ public class Interpreter {
                                 registers[inst.dst] = NoneValue.ITER_END;
                             } else if (obj instanceof ObjectValue<?> ov) {
                                 // IAriaObject 元素访问: obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
+                                // A8：rawCallee(c=3)时不求值,取原始值供 CALL 带参调用。
                                 Variable elem = ov.jvmValue().getElement(idx.stringValue());
-                                registers[inst.dst] = resolveLazyProperty(elem != null ? elem.ariaValue() : null, context);
+                                IValue<?> ev = elem != null ? elem.ariaValue() : null;
+                                registers[inst.dst] = rawCallee ? ev : resolveLazyProperty(ev, context);
                             } else {
                                 registers[inst.dst] = NoneValue.NONE;
                             }
@@ -2213,14 +2221,17 @@ public class Interpreter {
                     }
                     case GET_INDEX -> {
                         // 与主循环一致：c=1 for-in(终结=ITER_END 哨兵)、c=2 args 索引(越界→none)、
-                        // c=0 普通(list 越界抛)；map/list 读出值过 resolveLazyProperty(interop-3)。
+                        // c=0 普通(list 越界抛)、c=3 callee-raw(A8：不 resolve,取原始 CWI 供 CALL 带参调用)；
+                        // map/list 读出值过 resolveLazyProperty(interop-3)。
                         IValue<?> obj = registers[inst.a];
                         IValue<?> idx = registers[inst.b];
+                        boolean rawCallee = inst.c == 3;
                         if (obj instanceof ListValue lv) {
                             int index = (int) idx.numberValue();
                             List<IValue<?>> list = lv.jvmValue();
                             if (index >= 0 && index < list.size()) {
-                                registers[inst.dst] = resolveLazyProperty(list.get(index), context);
+                                IValue<?> el = list.get(index);
+                                registers[inst.dst] = rawCallee ? el : resolveLazyProperty(el, context);
                             } else if (inst.c == 1) {
                                 registers[inst.dst] = NoneValue.ITER_END;
                             } else if (inst.c == 2) {
@@ -2236,13 +2247,14 @@ public class Interpreter {
                                 if (val == null) {
                                     val = mv.jvmValue().get(new StringValue(idx.stringValue()));
                                 }
-                                registers[inst.dst] = resolveLazyProperty(val, context);
+                                registers[inst.dst] = rawCallee ? val : resolveLazyProperty(val, context);
                             }
                         } else if (obj instanceof SmallMapValue sm) {
                             if (inst.c == 1) {
                                 registers[inst.dst] = mapEntryAt(sm.jvmValue(), (int) idx.numberValue());
                             } else {
-                                registers[inst.dst] = resolveLazyProperty(sm.get(idx), context);
+                                IValue<?> val = sm.get(idx);
+                                registers[inst.dst] = rawCallee ? val : resolveLazyProperty(val, context);
                             }
                         } else if (obj instanceof StringValue sv) {
                             int index = (int) idx.numberValue();
@@ -2264,8 +2276,10 @@ public class Interpreter {
                             registers[inst.dst] = NoneValue.ITER_END;
                         } else if (obj instanceof ObjectValue<?> ov) {
                             // IAriaObject 元素访问 obj['key'] — 惰性属性 auto-invoke(对齐 GET_PROP)
+                            // A8：rawCallee(c=3)时不求值,取原始值供 CALL 带参调用。
                             Variable elem = ov.jvmValue().getElement(idx.stringValue());
-                            registers[inst.dst] = resolveLazyProperty(elem != null ? elem.ariaValue() : null, context);
+                            IValue<?> ev = elem != null ? elem.ariaValue() : null;
+                            registers[inst.dst] = rawCallee ? ev : resolveLazyProperty(ev, context);
                         } else {
                             registers[inst.dst] = NoneValue.NONE;
                         }
