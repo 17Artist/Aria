@@ -793,13 +793,27 @@ public class Compiler {
         List<MapExpr.MapEntry> entries = expr.getEntries();
         boolean hasSpread = entries.stream().anyMatch(e -> e.key() == null);
         if (!hasSpread) {
-            // 快速路径：无展开，连续寄存器 + 单条 NEW_MAP
+            // 快速路径：无展开，连续寄存器窗口 + 单条 NEW_MAP。与 compileList/CONCAT 相同：
+            // 先预分配整个 2n 窗口，再把键/值编译到自由寄存器后显式 MOVE 进窗口——
+            // 键/值表达式(IndexExpr/BinaryExpr 等)的中间操作数寄存器不再混进窗口挤掉真实键值。
+            int n = entries.size();
             int baseReg = registerCounter;
-            for (MapExpr.MapEntry entry : entries) {
-                compileNode(entry.key(), -1);
-                compileNode(entry.value(), -1);
+            int[] window = new int[n * 2];
+            for (int i = 0; i < n * 2; i++) {
+                window[i] = nextRegister();
             }
-            emit(IRInstruction.of(IROpCode.NEW_MAP, dst, baseReg, entries.size()), expr.getLocation());
+            for (int i = 0; i < n; i++) {
+                MapExpr.MapEntry entry = entries.get(i);
+                int kReg = compileNode(entry.key(), -1);
+                if (kReg != window[i * 2]) {
+                    emit(IRInstruction.of(IROpCode.MOVE, window[i * 2], kReg), expr.getLocation());
+                }
+                int vReg = compileNode(entry.value(), -1);
+                if (vReg != window[i * 2 + 1]) {
+                    emit(IRInstruction.of(IROpCode.MOVE, window[i * 2 + 1], vReg), expr.getLocation());
+                }
+            }
+            emit(IRInstruction.of(IROpCode.NEW_MAP, dst, baseReg, n), expr.getLocation());
             return dst;
         }
         // 有展开：先建空 map，按顺序逐条 put（普通项）或 merge（展开项，复用 map+map 合并语义）
@@ -865,9 +879,18 @@ public class Compiler {
 
     private int compileNew(NewExpr expr, int dst) {
         List<ASTNode> args = expr.getArguments();
+        // 与 compileCall 相同：预分配连续参数窗口后 MOVE 进入，
+        // 复杂参数表达式的中间寄存器不会挤进 NEW_INSTANCE 的 argBase 窗口。
         int argBase = registerCounter;
-        for (ASTNode arg : args) {
-            compileNode(arg, -1);
+        int[] argDstRegs = new int[args.size()];
+        for (int i = 0; i < args.size(); i++) {
+            argDstRegs[i] = nextRegister();
+        }
+        for (int i = 0; i < args.size(); i++) {
+            int resultReg = compileNode(args.get(i), -1);
+            if (resultReg != argDstRegs[i]) {
+                emit(IRInstruction.of(IROpCode.MOVE, argDstRegs[i], resultReg), expr.getLocation());
+            }
         }
         int ci = addConstant(new StringValue(expr.getClassName()));
         IRInstruction inst = IRInstruction.of(IROpCode.NEW_INSTANCE, dst, ci, args.size());
